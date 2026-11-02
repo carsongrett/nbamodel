@@ -1651,6 +1651,7 @@ export type SlateRow = {
 
 export type SlateView = {
   date: string;
+  dates: string[];
   settings: Settings;
   teams: Team[];
   games: { gameId: string; label: string; status: GameStatus }[];
@@ -1807,8 +1808,10 @@ export function buildSlate(db: Database, date: string): SlateView {
   const games = db.games
     .filter((g) => g.gameDate === date && g.season === CURRENT_SEASON)
     .map((g) => ({ gameId: g.gameId, label: `${g.awayTeamId} at ${g.homeTeamId}`, status: g.status }));
+  const dates = [...new Set(db.games.filter((g) => g.season === CURRENT_SEASON).map((g) => g.gameDate))].sort((a, b) => b.localeCompare(a));
   return {
     date,
+    dates,
     settings: db.settings,
     teams: db.teams.slice().sort((a, b) => a.teamId.localeCompare(b.teamId)),
     games,

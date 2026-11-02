@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Settings, SlateStat, SlateView, Stat } from "../lib/engine";
+import type { Settings, SlateView, Stat } from "../lib/engine";
 import AboutDesk from "./AboutDesk";
+import DeskNav from "./DeskNav";
+import RunModelDialog from "./RunModelDialog";
+import Trace from "./Trace";
 
 type Payload = {
   ok?: boolean;
@@ -54,6 +57,15 @@ const KINDS = [
   "dvp", "pace", "opp_rebounds", "vegas", "id_map",
 ];
 
+function slateLabel(iso: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${iso}T12:00:00Z`));
+}
+
 function fmt(value: number | null | undefined, digits = 2): string {
   if (value == null || Number.isNaN(value)) return "—";
   return value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -73,7 +85,7 @@ function deltaStyle(edge: number | null): { background: string } | undefined {
 }
 
 export default function Dashboard({ initialDate, authConfigured }: { initialDate: string; authConfigured: boolean }) {
-  const [date, setDate] = useState(initialDate);
+  const date = initialDate;
   const [stat, setStat] = useState<Stat>("points");
   const [gameId, setGameId] = useState("");
   const [teamId, setTeamId] = useState("");
@@ -85,20 +97,11 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   const [kind, setKind] = useState("projections");
   const [importText, setImportText] = useState("");
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [runOpen, setRunOpen] = useState(false);
 
   useEffect(() => {
     if (window.location.hash === "#about") setAboutOpen(true);
   }, []);
-
-  async function load(nextDate = date) {
-    const response = await fetch(`/api/slate?date=${nextDate}`);
-    const body = (await response.json()) as Payload;
-    setPayload(body);
-    if (body.slate) setSettings(body.slate.settings);
-    if (!response.ok) setStatus(body.error || "The slate could not be loaded.");
-    else if (body.slate && body.slate.rows.length === 0) setStatus(`No ${nextDate} players stored. Refresh games loads the public slate for that date.`);
-    else setStatus(`Showing ${body.slate?.rows.length ?? 0} players for ${nextDate}.`);
-  }
 
   const liveLoadStarted = useRef(false);
 
@@ -190,8 +193,9 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       <header className="top">
         <div>
           <p className="eyebrow">2026–27 season</p>
-          <h1>Player prop desk</h1>
-          <p className="sub">Points, rebounds, and points plus rebounds. SportsLine is the outside projection. The points line is only a weight on last-15 and the minutes share.</p>
+          <h1>Today</h1>
+          <DeskNav current="today" />
+          <p className="sub">{slateLabel(initialDate)}. The board is a live preview. Run Model saves the projection and the line that History grades.</p>
         </div>
         <div className="top-actions">
           <button className="about-open" type="button" aria-haspopup="dialog" aria-expanded={aboutOpen} onClick={() => setAboutOpen(true)}>?</button>
@@ -210,10 +214,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       </div>
 
       <div className="row actions">
-        <label>
-          Slate date
-          <input type="date" value={date} onChange={(event) => { setDate(event.target.value); setGameId(""); void load(event.target.value); }} />
-        </label>
         <label>
           Game
           <select value={gameId} onChange={(event) => setGameId(event.target.value)}>
@@ -234,7 +234,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
             {STATS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
         </label>
-        <button className="primary" type="button" disabled={busy} onClick={() => void post("/api/model", {}, "Running the model…")}>Run Model</button>
+        <button className="primary" type="button" disabled={busy} aria-haspopup="dialog" aria-expanded={runOpen} onClick={() => setRunOpen(true)}>Run Model</button>
         <button className="secondary" type="button" disabled={busy} onClick={() => void post("/api/sources", {}, "Loading games…")}>Refresh games</button>
         <button className="ghost" type="button" disabled={busy} onClick={() => void post("/api/sources/bettingpros", {}, "Checking BettingPros…")}>Check BettingPros</button>
         <button className="ghost" type="button" disabled={busy} onClick={() => void post("/api/research", {}, "Requesting research…")}>Research Slate</button>
@@ -259,7 +259,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       <div className="table-wrap">
         <table>
           <caption className="meta" style={{ captionSide: "bottom", padding: 10 }}>
-            A player is listed when one published name matches that team. Delta is the projection minus the line. Green is above the line and red is below it. {STATS.find((item) => item.id === stat)?.label}.
+            Delta is the projection minus the line. Green is above the line and red is below it. {STATS.find((item) => item.id === stat)?.label}. Refresh games updates the preview. Run Model is what gets saved.
           </caption>
           <thead>
             <tr>
@@ -383,46 +383,14 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
         </section>
       </div>
       {aboutOpen ? <AboutDesk onClose={() => setAboutOpen(false)} /> : null}
+      {runOpen ? (
+        <RunModelDialog
+          dateLabel={slateLabel(date)}
+          busy={busy}
+          onClose={() => setRunOpen(false)}
+          onConfirm={() => { setRunOpen(false); void post("/api/model", {}, "Saving the pregame record…"); }}
+        />
+      ) : null}
     </main>
-  );
-}
-
-function Trace({ stat, implied, locked }: { stat: SlateStat; implied: string | null; locked: boolean }) {
-  const projectionDetail = [locked ? "Locked after actuals." : null, stat.blockReason].filter(Boolean).join(" ");
-  return (
-    <details className="trace">
-      <summary>Projection trace</summary>
-      <div className="trace-body">
-        {stat.baseline != null ? (
-          <Step label="SL projection" value={fmt(stat.baseline)} detail={stat.sourcesUsed.length ? stat.sourcesUsed.join(", ") : null} />
-        ) : null}
-        {stat.adjustments.map((adjustment) => (
-          <Step
-            key={adjustment.key}
-            label={adjustment.label}
-            value={adjustment.status === "applied" ? fmt(adjustment.delta) : "skipped"}
-            detail={adjustment.detail}
-          />
-        ))}
-        <Step label="Projection" value={stat.projection == null ? "Blocked" : fmt(stat.projection)} detail={projectionDetail || null} />
-        {implied ? <Step label="Team points" value="" detail={implied} /> : null}
-      </div>
-    </details>
-  );
-}
-
-function Step({ label, value, detail }: { label: string; value: string; detail?: string | null }) {
-  const line = (
-    <>
-      <span>{label}</span>
-      <b>{value}</b>
-    </>
-  );
-  if (!detail) return <div className="step">{line}</div>;
-  return (
-    <details className="step-line">
-      <summary className="step">{line}</summary>
-      <div className="detail">{detail}</div>
-    </details>
   );
 }

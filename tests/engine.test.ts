@@ -580,6 +580,16 @@ test("chicago date and settings validation", () => {
   assert.match(cleared.error ?? "", /Unknown player/);
 });
 
+test("slate lists current-season dates newest first", () => {
+  const db = emptyDatabase();
+  db.games.push(
+    { gameId: "2026-11-01|A@B", season: CURRENT_SEASON, gameDate: "2026-11-01", homeTeamId: "B", awayTeamId: "A", status: "scheduled" },
+    { gameId: "2026-10-31|A@B", season: CURRENT_SEASON, gameDate: "2026-10-31", homeTeamId: "B", awayTeamId: "A", status: "final" },
+    { gameId: "old", season: "2024-25", gameDate: "2025-01-01", homeTeamId: "B", awayTeamId: "A", status: "final" },
+  );
+  assert.deepEqual(buildSlate(db, "2026-11-01").dates, ["2026-11-01", "2026-10-31"]);
+});
+
 test("upsert keeps a single row per key", () => {
   const once = upsertByKey([{ id: "a", n: 1 }], [{ id: "a", n: 2 }, { id: "b", n: 3 }], (r) => r.id);
   assert.equal(once.rows.length, 2);

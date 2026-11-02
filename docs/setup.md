@@ -8,7 +8,7 @@ npm test
 npm run dev
 ```
 
-Open the app. The date defaults to today in America/Chicago. If storage has no live game yet, the page loads that date from the public sources once. **Refresh games** loads the selected date again.
+Open the app. **Today** is the current date in America/Chicago and shows the live projection. **History** is earlier slates and how they graded. If storage has no live game yet, Today loads the public slate once. **Refresh games** loads today again.
 
 Today's refresh drops sample rows and matches an exact normalized name on the same team. Sample player ids start with `player_` and sample game ids start with `game_`. A SportsLine name matches when, after accents and punctuation are removed, it equals one Basketball Reference player on that team. Two players with that same name are left off. A different suffix, such as Jr, stays a different name.
 
@@ -16,9 +16,9 @@ Put `BETTINGPROS_API_KEY` in `.env.local` and restart the server when you want c
 
 Then:
 
-1. **Run Model** to save a pregame projection, line, odds, and timestamp.
-2. On a later day, **Refresh games**. That download already includes Basketball Reference daily leaders for the previous 15 dates. Box scores are stored for games already on the desk, and those games are marked final.
-3. Open the earlier date. Grades use the saved line. The projection does not move after actuals are stored.
+1. On **Today**, open **Run Model** and confirm. The button explains the save before anything is written. That confirm stores the pregame projection, line, odds, and timestamp. **Refresh games** only downloads inputs. The board before that confirm is a preview.
+2. On a later day, open **Today** and **Refresh games**. That download already includes Basketball Reference daily leaders for the previous 15 dates. Box scores are stored for games already on the desk, and those games are marked final.
+3. Open **History**. Grades use the saved line. The projection does not move after actuals are stored.
 
 ## Environment
 

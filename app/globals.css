@@ -96,7 +96,47 @@ details.step-line > summary::marker { content: ""; }
 .finding p { margin: 4px 0; }
 .login { max-width: 420px; margin: 10vh auto; padding: 24px; }
 
+.desk-nav { display: flex; gap: 6px; margin-top: 12px; }
+.desk-nav a {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  text-decoration: none;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 14px;
+  background: transparent;
+}
+.desk-nav a[aria-current="page"] { background: var(--ink); color: #f6f1e8; border-color: var(--ink); }
 .top-actions { display: flex; gap: 8px; align-items: center; }
+.empty-history ol { margin: 8px 0 0; padding-left: 18px; color: var(--muted); }
+.empty-history li + li { margin-top: 4px; }
+.run-dialog { width: min(640px, 100%); }
+.run-steps { display: grid; gap: 8px; margin: 14px 0; }
+.run-step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+}
+.run-step b { display: block; margin-bottom: 4px; }
+.run-step p { margin: 0; color: var(--muted); }
+.run-n {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #f6f1e8;
+  display: grid;
+  place-items: center;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+}
+.run-actions { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
 .about-open {
   width: 38px;
   height: 38px;
