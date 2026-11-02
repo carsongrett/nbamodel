@@ -234,7 +234,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       <div className="table-wrap">
         <table>
           <caption className="meta" style={{ captionSide: "bottom", padding: 10 }}>
-            Delta is the projection minus the line. Green is above the line and red is below it. {STATS.find((item) => item.id === stat)?.label}. Type a line to use it in the formula. A line you type stays when Run Model loads BettingPros again. Clear the box to remove it. Run Model is the save History grades.
+            Delta is the projection minus the line. Green is above the line and red is below it. {STATS.find((item) => item.id === stat)?.label}. A line from BettingPros or from this box is stored in History. A player with no line is left out. Clear the box to remove that stat.
           </caption>
           <thead>
             <tr>

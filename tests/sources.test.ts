@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { CURRENT_SEASON, emptyDatabase, setPropLine, type Player } from "../lib/engine.ts";
+import { applyModelRun, CURRENT_SEASON, emptyDatabase, setPropLine, type Player } from "../lib/engine.ts";
 import { applyPublicPages, stripSample, type FetchedPage, type PublicFetch } from "../lib/sources/apply.ts";
 import { applyBettingProsProbe } from "../lib/sources/apply-bettingpros.ts";
 import { fetchBettingProsDay, parseGameMarket, type ProbeResult } from "../lib/sources/bettingpros.ts";
@@ -399,6 +399,38 @@ function espnCard(tip: string, away: string, home: string, awaySpread: string, h
 }
 
 const espnHtml = `<div data-testid="betSixPackTable">${espnCard("2026-11-03T00:00Z", "okc", "cle", "+4.5", "-4.5", "229.5")}${espnCard("2026-12-25T17:00Z", "ny", "wsh", "+1.5", "-1.5", "220")}</div>`;
+
+test("history stores a typed line and leaves out a player with no line", () => {
+  const gameId = "2026-11-02|TOR@LAL";
+  const luka: Player = { playerId: "doncilu01", displayName: "Luka Doncic", teamId: "LAL", position: "PG", season: CURRENT_SEASON };
+  const reaves: Player = { playerId: "reavesau01", displayName: "Austin Reaves", teamId: "LAL", position: "SG", season: CURRENT_SEASON };
+  const start = {
+    ...emptyDatabase(),
+    players: [luka, reaves],
+    games: [{ gameId, season: CURRENT_SEASON, gameDate: "2026-11-02", homeTeamId: "LAL", awayTeamId: "TOR", status: "scheduled" as const }],
+    projections: [luka, reaves].map((player) => ({
+      playerId: player.playerId,
+      gameId,
+      source: "sportsline",
+      season: CURRENT_SEASON,
+      points: player.playerId === luka.playerId ? 32 : 16,
+      rebounds: 8,
+      minutes: 36,
+      sourceTimestamp: retrievedAt,
+    })),
+  };
+  const typed = setPropLine(start, luka.playerId, gameId, "points", 24.5, retrievedAt);
+  assert.equal(typed.stored, true);
+  assert.equal(typed.db.pregame.length, 1);
+  assert.equal(typed.db.pregame[0]?.playerId, luka.playerId);
+  assert.equal(typed.db.pregame[0]?.line, 24.5);
+  const ran = applyModelRun(typed.db, "2026-11-02", retrievedAt);
+  assert.equal(ran.db.pregame.some((row) => row.playerId === reaves.playerId), false);
+  assert.equal(ran.db.pregame.filter((row) => row.playerId === luka.playerId).length, 1);
+  const cleared = setPropLine(ran.db, luka.playerId, gameId, "points", null, retrievedAt);
+  assert.equal(cleared.db.pregame.length, 0);
+  assert.equal(cleared.db.lines.length, 0);
+});
 
 test("a typed line stays when bettingpros loads again", () => {
   const gameId = "2026-11-02|TOR@LAL";

@@ -139,7 +139,7 @@ export function commitDaily(
   if (!collected.ok) {
     return {
       db: espnApplied.db,
-      message: "BettingPros failed. The board has the other sources, and today's slate was not saved. Type a line to finish the formula.",
+      message: "BettingPros failed. The board has the other sources. Type a line to finish the formula and store that player in History.",
       messages: [
         ...applied.messages,
         ...espnApplied.messages,

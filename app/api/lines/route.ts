@@ -24,7 +24,11 @@ export async function PUT(request: Request) {
         db: updated.db,
         result: {
           ...slatePayload(updated.db, date),
-          message: line == null ? "Line cleared." : "Line saved. The projection uses it now.",
+          message: line == null
+            ? "Line cleared. That stat was left out of History."
+            : updated.stored
+              ? "Line saved. History has this projection."
+              : `Line saved. ${updated.reason ?? "No projection."} History was not updated.`,
         },
       };
     });

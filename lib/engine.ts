@@ -1419,13 +1419,20 @@ export function setPropLine(
   stat: Stat,
   line: number | null,
   savedAt: string,
-): { db: Database; error?: string } {
+): { db: Database; error?: string; stored?: boolean; reason?: string } {
   if (!db.players.some((p) => idsEqual(p.playerId, playerId))) return { db, error: "Unknown player id." };
   if (!db.games.some((g) => idsEqual(g.gameId, gameId))) return { db, error: "Unknown game id." };
   if (!STATS.includes(stat)) return { db, error: "Unknown stat." };
   if (locked(db, playerId, gameId)) return { db, error: "Results are already stored. The line was not changed." };
   const same = (row: PropLine) => idsEqual(row.playerId, playerId) && idsEqual(row.gameId, gameId) && row.stat === stat;
-  if (line == null) return { db: { ...db, lines: db.lines.filter((row) => !same(row)) } };
+  if (line == null) {
+    const cleared = {
+      ...db,
+      lines: db.lines.filter((row) => !same(row)),
+      pregame: db.pregame.filter((row) => !(idsEqual(row.playerId, playerId) && idsEqual(row.gameId, gameId) && row.stat === stat)),
+    };
+    return { db: cleared, stored: false };
+  }
   if (!Number.isFinite(line) || line <= 0) return { db, error: "The line must be a positive number." };
   const prior = db.lines.find(same);
   const row: PropLine = {
@@ -1439,7 +1446,8 @@ export function setPropLine(
     source: "manual",
     sourceTimestamp: savedAt,
   };
-  return { db: { ...db, lines: upsertByKey(db.lines, [row], (item) => `${item.playerId}|${item.gameId}|${item.stat}`).rows } };
+  const withLine = { ...db, lines: upsertByKey(db.lines, [row], (item) => `${item.playerId}|${item.gameId}|${item.stat}`).rows };
+  return rememberPregame(withLine, playerId, gameId, stat, savedAt);
 }
 
 type Eval = {
@@ -1564,6 +1572,29 @@ function lineFor(db: Database, playerId: string, gameId: string, stat: Stat): Pr
   return current(db.lines).find((l) => idsEqual(l.playerId, playerId) && idsEqual(l.gameId, gameId) && l.stat === stat) ?? null;
 }
 
+function rememberPregame(
+  db: Database,
+  playerId: string,
+  gameId: string,
+  stat: Stat,
+  savedAt: string,
+): { db: Database; stored: boolean; reason?: string } {
+  const player = db.players.find((item) => idsEqual(item.playerId, playerId));
+  const game = db.games.find((item) => idsEqual(item.gameId, gameId));
+  const drop = db.pregame.filter((row) => !(idsEqual(row.playerId, playerId) && idsEqual(row.gameId, gameId) && row.stat === stat));
+  if (!player || !game) return { db, stored: false, reason: "Unknown player or game." };
+  const line = lineFor(db, playerId, gameId, stat);
+  if (!line) return { db: { ...db, pregame: drop }, stored: false };
+  const evaled = evaluatePlayer(db, player, game);
+  const raw = stat === "points" ? evaled.points : stat === "rebounds" ? evaled.rebounds : evaled.combined;
+  const projection = withFreshness(raw, evaled.stamps, game.gameDate, raw.status === "ok");
+  if (projection.status !== "ok" || projection.projection == null) {
+    return { db, stored: false, reason: projection.blockReason ?? "No projection." };
+  }
+  const row = toPregame(playerId, gameId, game.gameDate, stat, projection, line, savedAt);
+  return { db: { ...db, pregame: upsertByKey(drop, [row], (item) => `${item.playerId}|${item.gameId}|${item.stat}`).rows }, stored: true };
+}
+
 function toPregame(playerId: string, gameId: string, date: string, stat: Stat, projection: StatProjection, line: PropLine | null, savedAt: string): PregameStat {
   return {
     playerId,
@@ -1593,6 +1624,7 @@ export function applyModelRun(db: Database, date: string, savedAt: string): { db
   let saved = 0;
   let kept = 0;
   let blocked = 0;
+  let unlined = 0;
   for (const { player, game } of pairs) {
     const isLocked = locked(db, player.playerId, game.gameId);
     if (isLocked) {
@@ -1613,6 +1645,12 @@ export function applyModelRun(db: Database, date: string, savedAt: string): { db
     const produced: PregameStat[] = [];
     for (const stat of STATS) {
       const projection = stat === "points" ? stamped.points : stat === "rebounds" ? stamped.rebounds : stamped.combined;
+      const line = lineFor(db, player.playerId, game.gameId, stat);
+      if (!line) {
+        unlined++;
+        pregame = pregame.filter((row) => !(idsEqual(row.playerId, player.playerId) && idsEqual(row.gameId, game.gameId) && row.stat === stat));
+        continue;
+      }
       if (projection.status !== "ok" || projection.projection == null) {
         blocked++;
         const existing = pregame.find((p) => idsEqual(p.playerId, player.playerId) && idsEqual(p.gameId, game.gameId) && p.stat === stat);
@@ -1623,7 +1661,7 @@ export function applyModelRun(db: Database, date: string, savedAt: string): { db
         });
         continue;
       }
-      produced.push(toPregame(player.playerId, game.gameId, date, stat, projection, lineFor(db, player.playerId, game.gameId, stat), savedAt));
+      produced.push(toPregame(player.playerId, game.gameId, date, stat, projection, line, savedAt));
     }
     if (produced.length) {
       const merged = upsertByKey(pregame, produced, (p) => `${p.playerId}|${p.gameId}|${p.stat}`);
@@ -1634,7 +1672,7 @@ export function applyModelRun(db: Database, date: string, savedAt: string): { db
   messages.unshift({
     level: "info",
     playerId: null,
-    message: `Saved ${saved} pregame stat rows. ${blocked} blocked. ${kept} player-games left locked.`,
+    message: `Saved ${saved} pregame stat rows. ${unlined} had no line and were left out of History. ${blocked} blocked. ${kept} player-games left locked.`,
   });
   return { db: { ...db, pregame }, messages };
 }
