@@ -8,6 +8,7 @@ import { applyPublicPages, stripSample, type FetchedPage, type PublicFetch } fro
 import { applyBettingProsProbe } from "../lib/sources/apply-bettingpros.ts";
 import { fetchBettingProsDay, parseGameMarket, type ProbeResult } from "../lib/sources/bettingpros.ts";
 import { collectDailySources, commitDaily } from "../lib/sources/daily-run.ts";
+import { applyEspnOdds, parseEspnOdds } from "../lib/sources/espn.ts";
 import { parseEnvText, readProjectEnv } from "../lib/sources/env-file.ts";
 import { parseSportsLine } from "../lib/sources/parsers.ts";
 import { canonicalTeam } from "../lib/sources/teams.ts";
@@ -300,8 +301,7 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
   assert.equal(urls.filter((url) => url.includes("market_id=156")).length, 2);
   assert.equal(urls.filter((url) => url.includes("market_id=157")).length, 2);
   assert.equal(urls.filter((url) => url.includes("market_id=336")).length, 2);
-  assert.equal(urls.filter((url) => url.includes("market_id=129")).length, 1);
-  assert.equal(urls.filter((url) => url.includes("market_id=128")).length, 1);
+  assert.equal(urls.some((url) => url.includes("market_id=129") || url.includes("market_id=128")), false);
   assert.equal(urls[1]?.includes("page="), false);
   assert.equal(day.state, "parsed");
   assert.equal(day.calls.join(" ").includes("test-key"), false);
@@ -313,7 +313,7 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
   assert.equal(named.db.lines.find((line) => line.stat === "rebounds")?.line, 8.5);
   assert.equal(named.db.lines.find((line) => line.stat === "points_rebounds")?.line, 30.5);
   assert.equal(named.db.idMap.find((item) => item.source === "bettingpros")?.canonicalId, "doncilu01");
-  assert.equal(named.db.vegas.find((row) => row.teamId === "LAL")?.spread, -3.5);
+  assert.equal(named.db.vegas.length, 0);
   const repeat = applyBettingProsProbe(named.db, "2026-11-02", day, retrievedAt);
   assert.equal(repeat.db.lines.length, 3);
 
@@ -376,15 +376,7 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
   });
   assert.equal(parseGameMarket(spread, 129, "ORL"), 7.5);
   assert.equal(parseGameMarket(total, 128, "ORL"), 222.5);
-  const gameLine: ProbeResult = {
-    state: "parsed",
-    message: "ok",
-    calls: [],
-    events: [{ id: "27976", home: "ORL", away: "BOS", spread: 7.5, total: 222.5 }],
-    offers: [],
-    furtherPages: 0,
-  };
-  const vegas = applyBettingProsProbe(emptyDatabase(), "2026-11-01", gameLine, retrievedAt);
+  const vegas = applyEspnOdds(emptyDatabase(), "2026-11-01", [{ away: "BOS", home: "ORL", spread: 7.5, total: 222.5 }], retrievedAt);
   assert.equal(vegas.db.vegas.find((row) => row.teamId === "ORL")?.spread, 7.5);
   assert.equal(vegas.db.vegas.find((row) => row.teamId === "BOS")?.spread, -7.5);
   assert.equal(vegas.db.vegas[0]?.total, 222.5);
@@ -394,19 +386,49 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
   assert.equal(failed("down").ok, false);
 });
 
+function espnCard(tip: string, away: string, home: string, awaySpread: string, homeSpread: string, total: string): string {
+  return `<div data-testid="betSixPackTable-item-0">
+    <a data-game-link="true">${tip}</a>
+    <a href="/nba/team/_/name/${away}/team"></a>
+    <a aria-label="pointSpread -110"><div data-testid="OddsCell"><div>${awaySpread}</div><div data-testid="OddsCellBottom">-110</div></div></a>
+    <a aria-label="total -110"><div data-testid="OddsCell"><div>o${total}</div><div data-testid="OddsCellBottom">-110</div></div></a>
+    <a href="/nba/team/_/name/${home}/team"></a>
+    <a aria-label="pointSpread -110"><div data-testid="OddsCell"><div>${homeSpread}</div><div data-testid="OddsCellBottom">-110</div></div></a>
+    <a aria-label="total -110"><div data-testid="OddsCell"><div>u${total}</div><div data-testid="OddsCellBottom">-110</div></div></a>
+  </div>`;
+}
+
+const espnHtml = `<div data-testid="betSixPackTable">${espnCard("2026-11-03T00:00Z", "okc", "cle", "+4.5", "-4.5", "229.5")}${espnCard("2026-12-25T17:00Z", "ny", "wsh", "+1.5", "-1.5", "220")}</div>`;
+
+test("espn odds page supplies the home spread and the total", () => {
+  const parsed = parseEspnOdds(espnHtml, "2026-11-02");
+  assert.equal(parsed.parsed, true);
+  assert.equal(parsed.games.length, 1);
+  assert.deepEqual(parsed.games[0], { away: "OKC", home: "CLE", spread: -4.5, total: 229.5 });
+  const stored = applyEspnOdds(emptyDatabase(), "2026-11-02", parsed.games, retrievedAt);
+  assert.equal(stored.db.vegas.find((row) => row.teamId === "CLE")?.spread, -4.5);
+  assert.equal(stored.db.vegas.find((row) => row.teamId === "OKC")?.spread, 4.5);
+  assert.equal(stored.db.vegas[0]?.total, 229.5);
+  const christmas = parseEspnOdds(espnHtml, "2026-12-25");
+  assert.equal(christmas.games.length, 1);
+  assert.equal(christmas.games[0]?.away, "NYK");
+  assert.equal(christmas.games[0]?.home, "WAS");
+});
+
 test("the first failed source stops the click and does not save today's slate", async () => {
   const previous = process.env.BETTINGPROS_API_KEY;
   process.env.BETTINGPROS_API_KEY = "test-key";
+  const espnPage = async () => espnHtml;
   try {
     const oddsUrls: string[] = [];
     const oddsDown = await collectDailySources("2026-11-02", retrievedAt, async (url) => {
       oddsUrls.push(url);
-      if (url.includes("/events")) return { ok: false, status: 429, text: async () => "" };
+      if (url.includes("espn.com")) return { ok: false, status: 429, text: async () => "" };
       return { ok: true, status: 200, text: async () => "2026-27" };
     });
     assert.equal(oddsDown.ok, false);
     if (!oddsDown.ok) {
-      assert.equal(oddsDown.source, "BettingPros");
+      assert.equal(oddsDown.source, "ESPN odds");
       assert.match(oddsDown.detail, /429/);
     }
     assert.equal(oddsUrls.length, 1);
@@ -414,9 +436,21 @@ test("the first failed source stops the click and does not save today's slate", 
     assert.equal(kept.db, undefined);
     assert.match(kept.message, /Today's slate was not saved/);
 
+    const props: string[] = [];
+    const propsDown = await collectDailySources("2026-11-02", retrievedAt, async (url) => {
+      props.push(url);
+      if (url.includes("espn.com")) return { ok: true, status: 200, text: espnPage };
+      if (url.includes("/events")) return { ok: false, status: 429, text: async () => "" };
+      return { ok: true, status: 200, text: async () => "2026-27" };
+    });
+    assert.equal(propsDown.ok, false);
+    if (!propsDown.ok) assert.equal(propsDown.source, "BettingPros");
+    assert.equal(props.some((url) => url.includes("basketball-reference")), false);
+
     const urls: string[] = [];
     const usageDown = await collectDailySources("2026-11-02", retrievedAt, async (url) => {
       urls.push(url);
+      if (url.includes("espn.com")) return { ok: true, status: 200, text: espnPage };
       if (url.includes("/events")) return { ok: true, status: 200, text: async () => JSON.stringify({ events: [] }) };
       if (url.includes("NBA_2027_advanced")) return { ok: false, status: 429, text: async () => "" };
       return { ok: true, status: 200, text: async () => "2026-27" };
@@ -427,21 +461,8 @@ test("the first failed source stops the click and does not save today's slate", 
     assert.equal(urls.some((url) => url.includes("sportsline")), false);
     assert.equal(urls.some((url) => url.includes("hashtagbasketball")), false);
 
-    const spreadUrls: string[] = [];
-    const spreadDown = await fetchBettingProsDay("2026-11-02", async (url) => {
-      spreadUrls.push(url);
-      if (url.includes("/events")) {
-        return { ok: true, status: 200, text: async () => JSON.stringify({ events: [{ id: 10, home: "LAL", visitor: "TOR" }] }) };
-      }
-      const marketId = Number(new URL(url).searchParams.get("market_id"));
-      if (marketId === 129) return { ok: false, status: 500, text: async () => "" };
-      return { ok: true, status: 200, text: async () => offerBody(marketId, 1, 1, 22.5) };
-    });
-    assert.equal(spreadDown.state, "error");
-    assert.match(spreadDown.message, /spread/);
-    assert.equal(spreadUrls.some((url) => url.includes("market_id=128")), false);
-
     const hollow = await collectDailySources("2026-11-02", retrievedAt, async (url) => {
+      if (url.includes("espn.com")) return { ok: true, status: 200, text: espnPage };
       if (url.includes("/events")) return { ok: true, status: 200, text: async () => JSON.stringify({ events: [] }) };
       return { ok: true, status: 200, text: async () => "2026-27" };
     });

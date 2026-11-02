@@ -1,4 +1,4 @@
-import { CURRENT_SEASON, upsertByKey, type Database, type Game, type IdMap, type ModelMessage, type PropLine, type Stat, type Vegas } from "../engine";
+import { CURRENT_SEASON, upsertByKey, type Database, type Game, type IdMap, type ModelMessage, type PropLine, type Stat } from "../engine";
 import { POINTS_MARKET_ID, POINTS_REBOUNDS_MARKET_ID, REBOUNDS_MARKET_ID, type ProbeResult } from "./bettingpros";
 import { normalizePersonName } from "./names";
 import { canonicalTeam, matchupGameId } from "./teams";
@@ -14,7 +14,6 @@ export function applyBettingProsProbe(db: Database, date: string, probe: ProbeRe
   if (probe.state !== "parsed") return { db, messages };
   let teams = db.teams.slice();
   let games = db.games.slice();
-  let vegas = db.vegas.slice();
   let lines = db.lines.slice();
   let idMap = db.idMap.slice();
   const gameByEvent = new Map<string, string>();
@@ -32,12 +31,6 @@ export function applyBettingProsProbe(db: Database, date: string, probe: ProbeRe
     const game: Game = { gameId, season: CURRENT_SEASON, gameDate: date, homeTeamId: home, awayTeamId: away, status: "scheduled" };
     const existing = games.find((row) => row.gameId === gameId);
     games = upsertByKey(games, [existing?.status === "final" ? { ...game, status: "final" as const } : game], (row) => row.gameId).rows;
-    if (event.spread == null || event.total == null) continue;
-    const rows: Vegas[] = [
-      { gameId, teamId: home, season: CURRENT_SEASON, spread: event.spread, total: event.total, sourceTimestamp: retrievedAt },
-      { gameId, teamId: away, season: CURRENT_SEASON, spread: -event.spread, total: event.total, sourceTimestamp: retrievedAt },
-    ];
-    vegas = upsertByKey(vegas, rows, (row) => `${row.gameId}|${row.teamId}`).rows;
   }
   let stored = 0;
   let unmapped = 0;
@@ -90,5 +83,5 @@ export function applyBettingProsProbe(db: Database, date: string, probe: ProbeRe
       message: `Consensus lines stored: ${stored}. Unmatched names or markets: ${unmapped}.`,
     });
   }
-  return { db: { ...db, teams, games, vegas, lines, idMap }, messages };
+  return { db: { ...db, teams, games, lines, idMap }, messages };
 }

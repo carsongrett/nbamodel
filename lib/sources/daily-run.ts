@@ -2,6 +2,7 @@ import { applyModelRun, type Database, type ModelMessage } from "../engine";
 import { applyPublicPages, type FetchedPage, type PublicFetch } from "./apply";
 import { applyBettingProsProbe } from "./apply-bettingpros";
 import { fetchBettingProsDay, type ProbeResult } from "./bettingpros";
+import { applyEspnOdds, fetchEspnOdds, type EspnGameOdds } from "./espn";
 import { pageIsCurrentSeason } from "./parsers";
 import { dailyLeadersUrl, shiftDate } from "./teams";
 
@@ -15,7 +16,7 @@ export type PageResponse = { ok: boolean; status: number; text: () => Promise<st
 export type PageFetch = (url: string, init: { headers: Record<string, string> }) => Promise<PageResponse>;
 
 export type DailyFailure = { ok: false; source: string; detail: string };
-export type DailySuccess = { ok: true; fetched: PublicFetch; odds: ProbeResult; savedAt: string };
+export type DailySuccess = { ok: true; fetched: PublicFetch; odds: ProbeResult; espn: EspnGameOdds[]; savedAt: string };
 export type DailyCollected = DailySuccess | DailyFailure;
 
 function failed(source: string, detail: string): DailyFailure {
@@ -46,6 +47,8 @@ export async function collectDailySources(date: string, savedAt: string, fetchIm
     const response = await fetch(url, { headers: init.headers, signal: AbortSignal.timeout(20000) });
     return { ok: response.ok, status: response.status, text: () => response.text() };
   });
+  const espn = await fetchEspnOdds(date, fetchPage);
+  if (!espn.ok) return failed("ESPN odds", espn.detail);
   const odds = await fetchBettingProsDay(date, fetchPage);
   if (odds.state !== "parsed") return failed("BettingPros", odds.message);
 
@@ -88,6 +91,7 @@ export async function collectDailySources(date: string, savedAt: string, fetchIm
     ok: true,
     savedAt,
     odds,
+    espn: espn.games,
     fetched: {
       advanced: page(ADVANCED_URL, usage.html),
       perGame: page(PER_GAME_URL, perGame.html),
@@ -125,9 +129,10 @@ export function commitDaily(
       messages: sourceErrors,
     };
   }
-  const oddsApplied = applyBettingProsProbe(applied.db, date, collected.odds, collected.savedAt);
+  const espnApplied = applyEspnOdds(applied.db, date, collected.espn, collected.savedAt);
+  const oddsApplied = applyBettingProsProbe(espnApplied.db, date, collected.odds, collected.savedAt);
   const ran = applyModelRun(oddsApplied.db, date, collected.savedAt);
-  const messages = [...applied.messages, ...oddsApplied.messages, ...ran.messages];
+  const messages = [...applied.messages, ...espnApplied.messages, ...oddsApplied.messages, ...ran.messages];
   const graded = messages.find((item) => item.message.startsWith("Basketball Reference leaders graded"));
   const saved = messages.find((item) => item.message.startsWith("Saved "));
   const lead = saved?.message ?? `Saved the ${date} slate.`;

@@ -25,7 +25,7 @@ export function bettingProsAvailability(): { state: "ready" | "setup_needed"; me
   if (fromProcess) {
     return {
       state: "ready",
-      message: "BettingPros key is set. Run Model loads today's events, lines, spread, and total. The first failed source stops the click, and the desk stops at 40 calls.",
+      message: "BettingPros key is set. Run Model loads today's consensus points, rebounds, and points-plus-rebounds lines. The spread and total come from ESPN. The first failed source stops the click, and the desk stops at 40 calls.",
     };
   }
   if (!diskKeyAllowed()) {
@@ -352,30 +352,6 @@ export async function fetchBettingProsDay(date: string, fetchImpl?: FetchLike): 
   };
 
   for (const event of events.events) {
-    for (const marketId of [SPREAD_MARKET_ID, TOTAL_MARKET_ID]) {
-      if (calls.length >= MAX_BETTINGPROS_CALLS) {
-        stopped = `Stopped at ${MAX_BETTINGPROS_CALLS} calls.`;
-        halt = true;
-        break;
-      }
-      const response = await pull(event.id, marketId, 1);
-      if (!response.ok) {
-        const which = marketId === SPREAD_MARKET_ID ? "spread" : "total";
-        stopped = response.status
-          ? `BettingPros ${which} returned HTTP ${response.status}.`
-          : `BettingPros ${which} failed: ${response.body}`;
-        halt = true;
-        break;
-      }
-      const line = parseGameMarket(response.body, marketId, event.home);
-      if (line == null) continue;
-      if (marketId === SPREAD_MARKET_ID) event.spread = line;
-      else event.total = line;
-    }
-    if (halt) break;
-  }
-
-  for (const event of events.events) {
     if (halt) break;
     for (const marketId of [POINTS_MARKET_ID, REBOUNDS_MARKET_ID, POINTS_REBOUNDS_MARKET_ID]) {
       const known = event.id === first.id && marketId === POINTS_MARKET_ID ? proof : null;
@@ -423,10 +399,9 @@ export async function fetchBettingProsDay(date: string, fetchImpl?: FetchLike): 
       furtherPages: unread,
     };
   }
-  const lined = events.events.filter((event) => event.spread != null && event.total != null).length;
   return {
     state: "parsed",
-    message: `Loaded ${events.events.length} events and ${offers.length} consensus lines for ${date}. Game total and spread are in for ${lined} events.`,
+    message: `Loaded ${events.events.length} events and ${offers.length} consensus lines for ${date}.`,
     calls,
     events: events.events,
     offers,
