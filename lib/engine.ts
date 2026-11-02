@@ -1423,10 +1423,9 @@ function evaluatePlayer(db: Database, player: Player, game: Game): Eval {
   const oppPace = current(db.pace).find((p) => idsEqual(p.teamId, opponentId)) ?? null;
   const oppReb = current(db.oppRebounds).find((o) => idsEqual(o.teamId, opponentId)) ?? null;
   const vegas = current(db.vegas).find((v) => idsEqual(v.gameId, game.gameId) && idsEqual(v.teamId, player.teamId)) ?? null;
-  const override = db.overrides.find((o) => idsEqual(o.playerId, player.playerId) && idsEqual(o.gameId, game.gameId));
   const minuteValues = projections.map((p) => p.minutes).filter((m): m is number => m != null);
   const minutesImported = average(minuteValues);
-  const minutesUsed = override ? override.minutes : minutesImported;
+  const minutesUsed = minutesImported;
   const pointsLine = lineFor(db, player.playerId, game.gameId, "points");
   const teamPoints = vegas ? favoredTeamPoints(vegas.total, vegas.spread) : null;
 

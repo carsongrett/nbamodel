@@ -68,7 +68,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   const [status, setStatus] = useState("Loading the slate.");
   const [busy, setBusy] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [minutesDraft, setMinutesDraft] = useState<Record<string, string>>({});
   const [adapter, setAdapter] = useState<"csv" | "json">("csv");
   const [kind, setKind] = useState("projections");
   const [importText, setImportText] = useState("");
@@ -287,32 +286,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                   </td>
                   <td>{row.teamId}</td>
                   <td>{row.opponentId}<div className="meta">{row.gameLabel}</div></td>
-                  <td className="num">
-                    <div>{fmt(row.minutesUsed, 1)}</div>
-                    <label>
-                      Override
-                      <input
-                        aria-label={`Minutes override for ${row.playerName}`}
-                        value={minutesDraft[key] ?? (row.minutesOverride?.toString() ?? "")}
-                        disabled={row.locked || busy}
-                        onChange={(event) => setMinutesDraft((current) => ({ ...current, [key]: event.target.value }))}
-                        style={{ width: 72 }}
-                      />
-                    </label>
-                    <button
-                      className="ghost"
-                      type="button"
-                      disabled={row.locked || busy}
-                      onClick={() => {
-                        const raw = (minutesDraft[key] ?? row.minutesOverride?.toString() ?? "").trim();
-                        void put("/api/overrides", {
-                          playerId: row.playerId,
-                          gameId: row.gameId,
-                          minutes: raw === "" ? null : Number(raw),
-                        }, "Saving minutes…");
-                      }}
-                    >Save minutes</button>
-                  </td>
+                  <td className="num">{fmt(row.minutesUsed, 1)}</td>
                   <td className="num">
                     {cell.blockReason && cell.projection == null ? "Blocked" : fmt(cell.projection)}
                     <div className="meta">{cell.source === "saved" ? "Saved pregame" : cell.savedAt ? "Preview, unsaved" : "Preview"}</div>
@@ -374,13 +348,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                 {finding.suggestedRole ? ` · ${finding.suggestedRole}` : ""}
               </p>
               {finding.flags.map((flag) => <span className="flag" key={flag}>{flag}</span>)}
-              {finding.suggestedMinutes != null ? (
-                <div>
-                  <button className="ghost" type="button" disabled={busy || Boolean(finding.appliedAt)} onClick={() => void post("/api/research/apply", { id: finding.id }, "Applying the minutes suggestion…")}>
-                    {finding.appliedAt ? "Applied as an override" : "Apply suggested minutes"}
-                  </button>
-                </div>
-              ) : null}
             </article>
           )) : <p>No findings for this date. Research stays empty until a configured provider returns some.</p>}
         </section>

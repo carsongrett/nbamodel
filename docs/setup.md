@@ -43,7 +43,7 @@ Login appears only when the public URL, anon key, and owner email are all set. T
 
 Storage uses Supabase only when the URL and service role key are set. Otherwise the app writes `data/local-store.json`. That file is local to the machine. On Vercel, set the Supabase variables so data survives between instances. The browser never holds the service role key.
 
-Research Slate calls the provider from the server. If the provider or key is missing, or the provider name is not `openai`, the button returns a setup-needed message and stores nothing. It does not invent injuries. Web pages are passed to the model as untrusted data. Suggested minutes stay as a review item until you press **Apply suggested minutes**, which writes an override only. Run Model after that if you want the override in the saved projection.
+Research Slate calls the provider from the server. If the provider or key is missing, or the provider name is not `openai`, the button returns a setup-needed message and stores nothing. It does not invent injuries. Web pages are passed to the model as untrusted data. A minutes suggestion does not replace SportsLine minutes.
 
 Nothing is scheduled. Run Model, Update Results, imports, Research Slate, and the source buttons are manual.
 

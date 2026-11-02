@@ -43,7 +43,7 @@ A lower divisor moves the projection more. `10000` is the workbook’s way to tu
 
 5. **Pace and opponent rebounds.** Those workbook terms are not applied. The old divisors remain in settings and are unused.
 
-6. **Minutes sources.** Minutes are the average of imported minute values for that player and game, except NumberFire. A player-game override replaces that average.
+6. **Minutes sources.** Minutes are the SportsLine minutes for that player and game. The desk does not replace that number.
 
 7. **Short samples.** The sheet used whatever recent or rate cell was present. Recent windows below `minRecentGames` (default 3) and rate samples below `minRateGames` (default 5), or a missing sample size, skip that adjustment. Prior-season columns are rejected or ignored. They are never copied into a current-season hole.
 
