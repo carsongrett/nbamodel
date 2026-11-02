@@ -25,18 +25,28 @@ const STATS: { id: Stat; label: string }[] = [
   { id: "points_rebounds", label: "Points + rebounds" },
 ];
 
-const SETTING_FIELDS: { key: keyof Settings; label: string }[] = [
-  { key: "dvpPointsStrength", label: "DvP points strength" },
-  { key: "dvpReboundsStrength", label: "DvP rebounds strength" },
-  { key: "pacePointsStrength", label: "Pace points strength" },
-  { key: "paceReboundsStrength", label: "Pace rebounds strength" },
-  { key: "recentPointsStrength", label: "Recent points strength" },
-  { key: "recentReboundsStrength", label: "Recent rebounds strength" },
-  { key: "minutesPointsStrength", label: "Minutes points strength" },
-  { key: "minutesReboundsStrength", label: "Minutes rebounds strength" },
-  { key: "oppReboundsStrength", label: "Opponent rebounds strength" },
-  { key: "minRecentGames", label: "Minimum recent games" },
-  { key: "minRateGames", label: "Minimum rate-sample games" },
+function scaleText(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function shiftText(gap: number, strength: number): string {
+  const shift = gap / strength;
+  const shown = `${shift > 0 ? "+" : ""}${shift.toFixed(2)}`;
+  return `${gap.toFixed(2)} / ${scaleText(strength)} = ${shown}. The projection and the edge versus the line both move by ${shown}.`;
+}
+
+const SETTING_FIELDS: { key: keyof Settings; label: string; min: number; max: number; step: number; example: (value: number) => string }[] = [
+  { key: "dvpPointsStrength", label: "DvP points", min: 1, max: 30, step: 0.5, example: (value) => `Defense is 1.00 points above average. ${shiftText(1, value)}` },
+  { key: "dvpReboundsStrength", label: "DvP rebounds", min: 1, max: 30, step: 0.5, example: (value) => `Defense is 1.00 rebounds above average. ${shiftText(1, value)}` },
+  { key: "pacePointsStrength", label: "Pace points", min: 1, max: 30, step: 0.5, example: (value) => `Opponent pace is 7.50 possessions above the league. ${shiftText(7.5, value)}` },
+  { key: "paceReboundsStrength", label: "Pace rebounds", min: 1, max: 30, step: 0.5, example: (value) => `Opponent pace is 7.50 possessions above the league. ${shiftText(7.5, value)}` },
+  { key: "recentPointsStrength", label: "Recent points", min: 1, max: 30, step: 0.5, example: (value) => `Last 15 is 3.00 points above the line. ${shiftText(3, value)}` },
+  { key: "recentReboundsStrength", label: "Recent rebounds", min: 1, max: 30, step: 0.5, example: (value) => `Last 15 is 1.00 rebound above SportsLine. ${shiftText(1, value)}` },
+  { key: "minutesPointsStrength", label: "Minutes points", min: 1, max: 30, step: 0.5, example: (value) => `The minutes share is 1.50 above the line. ${shiftText(1.5, value)}` },
+  { key: "minutesReboundsStrength", label: "Minutes rebounds", min: 1, max: 30, step: 0.5, example: (value) => `Rebounds per minute are 1.00 above SportsLine. ${shiftText(1, value)}` },
+  { key: "oppReboundsStrength", label: "Opponent rebounds", min: 1, max: 30, step: 0.5, example: (value) => `Not in the live formula. A 1.00 gap would have been ${(1 / value).toFixed(2)} at this divisor, and the projection does not move.` },
+  { key: "minRecentGames", label: "Minimum recent games", min: 1, max: 15, step: 1, example: (value) => `This player has 4 recent games. At ${scaleText(value)}, last 15 ${value <= 4 ? "counts" : "is skipped"}.` },
+  { key: "minRateGames", label: "Minimum rate-sample games", min: 1, max: 30, step: 1, example: (value) => `This player has 10 games of usage. At ${scaleText(value)}, the rate ${value <= 10 ? "counts" : "is skipped"}.` },
 ];
 
 const KINDS = [
@@ -328,20 +338,28 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
 
         <section className="card">
           <h2>Adjustment settings</h2>
-          <p className="sub">A lower strength moves the projection more. 10000 effectively turns an adjustment off. These are divisors, not fitted weights.</p>
+          <p className="sub">Drag a divisor. A lower number moves that term more. Save settings applies it to the board. 10000 still turns a term off if you import that value.</p>
           {settings ? (
             <form className="settings" onSubmit={(event) => { event.preventDefault(); void put("/api/settings", { settings }, "Saving settings…"); }}>
-              {SETTING_FIELDS.map((field) => (
-                <label key={field.key}>
-                  {field.label}
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={settings[field.key]}
-                    onChange={(event) => setSettings({ ...settings, [field.key]: Number(event.target.value) })}
-                  />
-                </label>
-              ))}
+              {SETTING_FIELDS.map((field) => {
+                const value = settings[field.key];
+                const max = Math.max(field.max, value);
+                return (
+                  <label className="scale" key={field.key}>
+                    <span className="scale-top"><b>{field.label}</b><b>{scaleText(value)}</b></span>
+                    <input
+                      type="range"
+                      min={field.min}
+                      max={max}
+                      step={field.step}
+                      value={value}
+                      aria-label={field.label}
+                      onChange={(event) => setSettings({ ...settings, [field.key]: Number(event.target.value) })}
+                    />
+                    <span className="scale-example">{field.example(value)}</span>
+                  </label>
+                );
+              })}
               <button className="primary" type="submit" disabled={busy}>Save settings</button>
             </form>
           ) : null}
