@@ -111,7 +111,8 @@ test("the points line is only the last-15 and minutes-share weight", () => {
   });
   const share = 110 * (36 / 48) * (20 / 100);
   assert.equal(weighted.adjustments.find((a) => a.key === "minutes")?.delta, (share - 20) / 3);
-  assert.equal(basePoints({ paceDiff: 5 }).adjustments.find((a) => a.key === "pace")?.status, "skipped");
+  assert.equal(basePoints({ paceDiff: 5 }).adjustments.find((a) => a.key === "pace")?.delta, 1);
+  assert.equal(basePoints({ paceDiff: null }).adjustments.find((a) => a.key === "pace")?.status, "skipped");
 });
 
 test("missing optional adjustments are skipped and a missing baseline blocks", () => {

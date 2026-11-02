@@ -12,25 +12,27 @@ const SOURCES = [
 const POINTS = [
   { site: "SportsLine", piece: "Points", how: "", tone: "accent", example: "SportsLine points are 22.00. That number is the start." },
   { site: "Hashtag", piece: "Defense", how: "÷ 2", tone: "warn", example: "This defense allows 1.00 more points than the position average. 1.00 / 2 = +0.50." },
+  { site: "Reference", piece: "Pace", how: "÷ 5", tone: "info", example: "Opponent pace is 7.50 possessions above the league. 7.50 / 5 = +1.50." },
   { site: "Reference − line", piece: "Last 15", how: "÷ 10", tone: "info", example: "Last 15 games: 24.00 points per game. The line is 21.00. (24.00 − 21.00) / 10 = +0.30." },
   { site: "Share − line", piece: "Minutes share", how: "÷ 3", tone: "good", example: "120 team points × 36 / 48 × 25 / 100 = 22.50. (22.50 − 21.00 line) / 3 = +0.50." },
-  { site: "Result", piece: "Projection", how: "", tone: "ink", example: "22.00 + 0.50 + 0.30 + 0.50 = 23.30 points." },
+  { site: "Result", piece: "Projection", how: "", tone: "ink", example: "22.00 + 0.50 + 1.50 + 0.30 + 0.50 = 24.80 points." },
 ];
 
 const REBOUNDS = [
   { site: "SportsLine", piece: "Rebounds", how: "", tone: "accent", example: "SportsLine rebounds are 8.00. That number is the start." },
   { site: "Hashtag", piece: "Defense", how: "÷ 2", tone: "warn", example: "This defense allows 1.00 more rebounds than the position average. 1.00 / 2 = +0.50." },
+  { site: "Reference", piece: "Pace", how: "÷ 7.5", tone: "info", example: "Opponent pace is 7.50 possessions above the league. 7.50 / 7.5 = +1.00." },
   { site: "Reference − SportsLine", piece: "Last 15", how: "÷ 10", tone: "info", example: "Last 15 games: 9.00 rebounds per game. SportsLine is 8.00. (9.00 − 8.00) / 10 = +0.10." },
   { site: "Reference − SportsLine", piece: "Per minute", how: "÷ 2", tone: "info", example: "0.25 rebounds per minute × 36 minutes = 9.00. (9.00 − 8.00 SportsLine) / 2 = +0.50." },
-  { site: "Result", piece: "Projection", how: "", tone: "ink", example: "8.00 + 0.50 + 0.10 + 0.50 = 9.10 rebounds." },
+  { site: "Result", piece: "Projection", how: "", tone: "ink", example: "8.00 + 0.50 + 1.00 + 0.10 + 0.50 = 10.10 rebounds." },
 ];
 
 const FINISH = [
-  { op: "", site: "Points", piece: "Projection", tone: "ink", example: "The points projection above is 23.30." },
-  { op: "+", site: "Rebounds", piece: "Projection", tone: "ink", example: "The rebounds projection above is 9.10." },
-  { op: "=", site: "Together", piece: "Points + rebounds", tone: "ink", example: "23.30 + 9.10 = 32.40." },
+  { op: "", site: "Points", piece: "Projection", tone: "ink", example: "The points projection above is 24.80." },
+  { op: "+", site: "Rebounds", piece: "Projection", tone: "ink", example: "The rebounds projection above is 10.10." },
+  { op: "=", site: "Together", piece: "Points + rebounds", tone: "ink", example: "24.80 + 10.10 = 34.90." },
   { op: "−", site: "BettingPros", piece: "Line", tone: "good", example: "The points-plus-rebounds line is 31.50." },
-  { op: "=", site: "Pick", piece: "Edge", tone: "ink", example: "32.40 − 31.50 = +0.90, so the pick is the over." },
+  { op: "=", site: "Pick", piece: "Edge", tone: "ink", example: "34.90 − 31.50 = +3.40, so the pick is the over." },
 ];
 
 function ExampleBox({ tone, site, piece, how, example }: { tone: string; site: string; piece: string; how?: string; example: string }) {
@@ -108,7 +110,6 @@ export default function AboutDesk({ onClose }: { onClose: () => void }) {
         <div className="unused">
           <span>Not used</span>
           <b>NumberFire</b>
-          <b>Pace</b>
           <b>Opponent rebounds</b>
           <b>SportsLine PROJ</b>
         </div>

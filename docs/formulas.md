@@ -41,7 +41,7 @@ A lower divisor moves the projection more. `10000` is the workbook’s way to tu
 
 4. **Missing inputs.** A text lookup used to turn the whole formula into `"no game"` or `"error"`, including a missing optional term. Optional adjustments are now flagged and skipped. The stat is blocked only when no numeric outside projection exists for it. Points + rebounds is blocked unless both stats project. Present sources other than NumberFire are averaged.
 
-5. **Pace and opponent rebounds.** Those workbook terms are not applied. The old divisors remain in settings and are unused.
+5. **Pace is the opponent’s season pace minus the league average.** Basketball-Reference’s team table supplies that pace. Points divide the difference by 5 and rebounds by 7.5. The workbook’s last-10 blend is not available on that page, so last-10 is not invented. Opponent rebounds stay unused.
 
 6. **Minutes sources.** Minutes are the SportsLine minutes for that player and game. The desk does not replace that number.
 

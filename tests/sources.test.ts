@@ -6,7 +6,7 @@ import test from "node:test";
 import { CURRENT_SEASON, emptyDatabase, type Player } from "../lib/engine.ts";
 import { applyPublicPages, stripSample, type FetchedPage, type PublicFetch } from "../lib/sources/apply.ts";
 import { applyBettingProsProbe } from "../lib/sources/apply-bettingpros.ts";
-import { fetchBettingProsDay, type ProbeResult } from "../lib/sources/bettingpros.ts";
+import { fetchBettingProsDay, parseGameMarket, type ProbeResult } from "../lib/sources/bettingpros.ts";
 import { parseEnvText, readProjectEnv } from "../lib/sources/env-file.ts";
 import { parseSportsLine } from "../lib/sources/parsers.ts";
 import { canonicalTeam } from "../lib/sources/teams.ts";
@@ -37,6 +37,13 @@ function bundle(overrides: Partial<PublicFetch> = {}): PublicFetch {
       <td data-stat="games">10</td>
       <td data-stat="trb_per_g">8</td>
       <td data-stat="mp_per_g">36</td>
+    </tr></table>`),
+    pace: page(`2026-27<table id="advanced-team"><tr>
+      <td><a href="/teams/LAL/2027.html">Lakers</a></td><td data-stat="pace">102</td>
+    </tr><tr>
+      <td><a href="/teams/TOR/2027.html">Raptors</a></td><td data-stat="pace">98</td>
+    </tr><tr>
+      <td><a href="/teams/BRK/2027.html">Nets</a></td><td data-stat="pace">100</td>
     </tr></table>`),
     last15: [1, 2].map((day) => ({
       date: `2026-10-${20 + day}`,
@@ -144,6 +151,8 @@ test("public pages match one exact name, skip a non-current season, and do not d
   assert.equal(rate?.rebPerMinute, 8 / 36);
   assert.equal(rate?.recentPointsPerGame, (21 + 22) / 2);
   assert.equal(rate?.recentGames, 2);
+  assert.equal(first.db.pace.find((row) => row.teamId === "LAL")?.paceDiff, 2);
+  assert.equal(first.db.pace.find((row) => row.teamId === "BKN")?.pace, 100);
   assert.equal(first.db.actuals.length, 1);
   assert.equal(first.db.actuals[0]?.gameId, "2026-11-02|TOR@LAL");
   const lal = first.db.dvp.find((row) => row.teamId === "LAL" && row.position === "PG");
@@ -279,6 +288,9 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
     }
     const marketId = Number(new URL(url).searchParams.get("market_id"));
     const pageNumber = Number(new URL(url).searchParams.get("page") ?? "1");
+    if (marketId === 129 || marketId === 128) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ offers: [], _pagination: { page: 1, total_pages: 1 } }) };
+    }
     const line = marketId === 157 ? 8.5 : marketId === 336 ? 30.5 : 22.5;
     return { ok: true, status: 200, text: async () => offerBody(marketId, pageNumber, 2, line) };
   });
@@ -287,6 +299,8 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
   assert.equal(urls.filter((url) => url.includes("market_id=156")).length, 2);
   assert.equal(urls.filter((url) => url.includes("market_id=157")).length, 2);
   assert.equal(urls.filter((url) => url.includes("market_id=336")).length, 2);
+  assert.equal(urls.filter((url) => url.includes("market_id=129")).length, 1);
+  assert.equal(urls.filter((url) => url.includes("market_id=128")).length, 1);
   assert.equal(urls[1]?.includes("page="), false);
   assert.equal(day.state, "parsed");
   assert.equal(day.calls.join(" ").includes("test-key"), false);
@@ -338,6 +352,39 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
     players: [player, { ...player, playerId: "doncilu02", position: "SG" }],
   }, "2026-11-02", ambiguous, retrievedAt);
   assert.equal(twins.db.lines.length, 0);
+
+  const spread = JSON.stringify({
+    offers: [{
+      market_id: 129,
+      selections: [
+        { participant: "BOS", books: [{ id: 0, lines: [{ line: -7.5, cost: -113 }] }] },
+        { participant: "ORL", books: [{ id: 0, lines: [{ line: 7.5, cost: -108 }] }] },
+      ],
+    }],
+  });
+  const total = JSON.stringify({
+    offers: [{
+      market_id: 128,
+      selections: [
+        { selection: "over", books: [{ id: 0, lines: [{ line: 222.5, cost: -109 }] }] },
+        { selection: "under", books: [{ id: 0, lines: [{ line: 222.5, cost: -110 }] }] },
+      ],
+    }],
+  });
+  assert.equal(parseGameMarket(spread, 129, "ORL"), 7.5);
+  assert.equal(parseGameMarket(total, 128, "ORL"), 222.5);
+  const gameLine: ProbeResult = {
+    state: "parsed",
+    message: "ok",
+    calls: [],
+    events: [{ id: "27976", home: "ORL", away: "BOS", spread: 7.5, total: 222.5 }],
+    offers: [],
+    furtherPages: 0,
+  };
+  const vegas = applyBettingProsProbe(emptyDatabase(), "2026-11-01", gameLine, retrievedAt);
+  assert.equal(vegas.db.vegas.find((row) => row.teamId === "ORL")?.spread, 7.5);
+  assert.equal(vegas.db.vegas.find((row) => row.teamId === "BOS")?.spread, -7.5);
+  assert.equal(vegas.db.vegas[0]?.total, 222.5);
 
   if (previous == null) delete process.env.BETTINGPROS_API_KEY;
   else process.env.BETTINGPROS_API_KEY = previous;

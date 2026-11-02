@@ -15,7 +15,7 @@ import {
   type Team,
 } from "../engine";
 import { normalizePersonName } from "./names";
-import { pageIsCurrentSeason, parseBrefPlayers, parseHashtag, parseSportsLine, type BrefPlayerRow } from "./parsers";
+import { pageIsCurrentSeason, parseBrefPlayers, parseHashtag, parseSportsLine, parseTeamPace, type BrefPlayerRow } from "./parsers";
 import { matchupGameId } from "./teams";
 
 export const BREF = "basketball-reference";
@@ -27,6 +27,7 @@ export type FetchedPage = { url: string; ok: true; html: string } | { url: strin
 export type PublicFetch = {
   advanced: FetchedPage;
   perGame: FetchedPage;
+  pace: FetchedPage;
   last15: { date: string; page: FetchedPage }[];
   actuals: FetchedPage;
   sportsline: FetchedPage;
@@ -147,6 +148,7 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
   let rates = db.rates.slice();
   let projections = db.projections.slice();
   let dvp = db.dvp.slice();
+  let pace = db.pace.slice();
   let actuals = db.actuals.slice();
 
   const ensureTeam = (teamId: string) => {
@@ -228,6 +230,31 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
       roster.set(id, prior ? { ...prior, ...Object.fromEntries(Object.entries(row).filter(([, value]) => value != null)) } as Roster : row);
     }
   }
+  if (!fetched.pace.ok) {
+    messages.push({ level: "error", playerId: null, message: `Basketball Reference team pace failed: ${fetched.pace.error}` });
+  } else if (!pageIsCurrentSeason(fetched.pace.html)) {
+    messages.push({ level: "error", playerId: null, message: "Basketball Reference team pace is not a 2026–27 page and was not imported." });
+  } else {
+    const rows = parseTeamPace(fetched.pace.html);
+    if (rows.length === 0) {
+      messages.push({ level: "error", playerId: null, message: "Basketball Reference team pace table had no teams." });
+    } else {
+      const league = rows.reduce((sum, row) => sum + row.pace, 0) / rows.length;
+      pace = upsertByKey(
+        pace,
+        rows.map((row) => ({
+          teamId: row.team,
+          season: CURRENT_SEASON,
+          pace: row.pace,
+          paceDiff: row.pace - league,
+          sourceTimestamp: fetched.retrievedAt,
+        })),
+        (row) => row.teamId,
+      ).rows;
+      messages.push({ level: "info", playerId: null, message: `Team pace stored: ${rows.length}. League pace ${Math.round(league * 10) / 10}.` });
+    }
+  }
+
   const readyRoster = [...roster.values()].filter((row) => row.team && row.position);
   messages.push({ level: "info", playerId: null, message: `Basketball Reference roster read: ${readyRoster.length}. Today's board keeps SportsLine matches only.` });
 
@@ -391,7 +418,7 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
   }
 
   return {
-    db: { ...db, teams, players, games, idMap, rates, projections, dvp, actuals },
+    db: { ...db, teams, players, games, idMap, rates, projections, dvp, pace, actuals },
     messages,
   };
 }

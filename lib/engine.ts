@@ -453,7 +453,7 @@ export function projectPoints(input: PointsInput): StatProjection {
     });
   }
 
-  adjustments.push(skip("pace", "Pace", "Pace is not a live input", s.pacePointsStrength));
+  adjustments.push(paceAdjustment(input.paceDiff, s.pacePointsStrength));
 
   const recentSample = input.recentPerGame == null
     ? "recent points per game is missing"
@@ -490,6 +490,21 @@ export function projectPoints(input: PointsInput): StatProjection {
     projection,
     flags,
     minutes: input.projectedMinutes,
+  };
+}
+
+function paceAdjustment(diff: number | null, strength: number): Adjustment {
+  if (diff == null) return skip("pace", "Pace", "opponent pace is missing", strength);
+  const delta = diff / strength;
+  return {
+    key: "pace",
+    label: "Pace",
+    status: "applied",
+    reason: null,
+    input: diff,
+    strength,
+    delta,
+    detail: `${roundDetail(diff)} possessions versus the league / ${strength} = ${roundDetail(delta)}.`,
   };
 }
 
@@ -557,7 +572,7 @@ export function projectRebounds(input: ReboundsInput): StatProjection {
     });
   }
 
-  adjustments.push(skip("pace", "Pace", "Pace is not a live input", s.paceReboundsStrength));
+  adjustments.push(paceAdjustment(input.paceDiff, s.paceReboundsStrength));
 
   const sportsline = used.find((source) => source.source === "sportsline")?.value ?? null;
   const anchor = sportsline ?? baseline;
@@ -1443,7 +1458,7 @@ function evaluatePlayer(db: Database, player: Player, game: Game): Eval {
     recentPerGame: rate?.recentPointsPerGame ?? null,
     recentGames: rate?.recentGames ?? null,
     dvpDiff: dvp?.pointsDiff ?? null,
-    paceDiff: null,
+    paceDiff: oppPace?.paceDiff ?? null,
     gamePace: null,
     gamePacePartial: false,
     teamPoints,

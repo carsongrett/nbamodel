@@ -1,9 +1,12 @@
 import { bettingProsKeyIssue, projectDir, readProjectEnv } from "./env-file";
+import { canonicalTeam } from "./teams";
 
 export const BETTINGPROS_BASE = "https://api.bettingpros.com/v3";
 export const POINTS_MARKET_ID = 156;
 export const REBOUNDS_MARKET_ID = 157;
 export const POINTS_REBOUNDS_MARKET_ID = 336;
+export const SPREAD_MARKET_ID = 129;
+export const TOTAL_MARKET_ID = 128;
 export const CONSENSUS_BOOK_ID = 0;
 
 function diskKeyAllowed(): boolean {
@@ -185,6 +188,42 @@ export function parseOffersPage(body: string): { offers: ParsedOffer[]; parsed: 
   return { offers, parsed: true, page, totalPages: total, furtherPages };
 }
 
+/** Home spread is the home team's signed line. Total is the over. */
+export function parseGameMarket(body: string, marketId: number, home: string | null): number | null {
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  const root = record(json);
+  const list = root && Array.isArray(root.offers) ? root.offers : null;
+  if (!list) return null;
+  const homeId = home ? canonicalTeam(home) : null;
+  for (const item of list) {
+    const row = record(item);
+    if (!row) continue;
+    const market = num(row.market_id);
+    if (market != null && market !== marketId) continue;
+    const selections = Array.isArray(row.selections) ? row.selections : [];
+    for (const selection of selections) {
+      const side = record(selection);
+      if (!side) continue;
+      const picked = bookLine(side.books);
+      if (picked.line == null) continue;
+      if (marketId === TOTAL_MARKET_ID) {
+        const label = (text(side.selection) ?? text(side.label) ?? "").toLowerCase();
+        if (label.includes("over")) return picked.line;
+      }
+      if (marketId === SPREAD_MARKET_ID && homeId) {
+        const who = canonicalTeam(text(side.participant) ?? text(side.short_label) ?? "");
+        if (who === homeId) return picked.line;
+      }
+    }
+  }
+  return null;
+}
+
 const MAX_BETTINGPROS_CALLS = 40;
 
 function offersUrl(eventId: string, marketId: number, page?: number): string {
@@ -313,6 +352,24 @@ export async function fetchBettingProsDay(date: string, fetchImpl?: FetchLike): 
   };
 
   for (const event of events.events) {
+    for (const marketId of [SPREAD_MARKET_ID, TOTAL_MARKET_ID]) {
+      if (calls.length >= MAX_BETTINGPROS_CALLS) {
+        stopped = `Stopped at ${MAX_BETTINGPROS_CALLS} calls.`;
+        halt = true;
+        break;
+      }
+      const response = await pull(event.id, marketId, 1);
+      if (!response.ok) continue;
+      const line = parseGameMarket(response.body, marketId, event.home);
+      if (line == null) continue;
+      if (marketId === SPREAD_MARKET_ID) event.spread = line;
+      else event.total = line;
+    }
+    if (halt) break;
+  }
+
+  for (const event of events.events) {
+    if (halt) break;
     for (const marketId of [POINTS_MARKET_ID, REBOUNDS_MARKET_ID, POINTS_REBOUNDS_MARKET_ID]) {
       const known = event.id === first.id && marketId === POINTS_MARKET_ID ? proof : null;
       let totalPages = known ? (known.totalPages ?? 1) : null;
@@ -348,10 +405,11 @@ export async function fetchBettingProsDay(date: string, fetchImpl?: FetchLike): 
     if (halt) break;
   }
 
+  const lined = events.events.filter((event) => event.spread != null && event.total != null).length;
   const tail = stopped ? ` ${stopped}` : "";
   return {
     state: "parsed",
-    message: `Loaded ${events.events.length} events and ${offers.length} consensus lines for ${date}.${tail}`,
+    message: `Loaded ${events.events.length} events and ${offers.length} consensus lines for ${date}. Game total and spread are in for ${lined} events.${tail}`,
     calls,
     events: events.events,
     offers,

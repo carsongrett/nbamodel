@@ -99,6 +99,22 @@ export function parseBrefPlayers(html: string): BrefPlayerRow[] {
   });
 }
 
+export function parseTeamPace(html: string): { team: string; pace: number }[] {
+  const doc = unwrapBref(html);
+  const table = /<table\b[^>]*id="advanced-team"[\s\S]*?<\/table>/i.exec(doc)?.[0];
+  if (!table) return [];
+  const rows: { team: string; pace: number }[] = [];
+  for (const tr of table.match(/<tr[\s\S]*?<\/tr>/gi) ?? []) {
+    const abbr = /\/teams\/([A-Za-z]{2,3})\//.exec(tr)?.[1];
+    const paceText = /data-stat="pace"[^>]*>([^<]*)/.exec(tr)?.[1];
+    const pace = num(paceText);
+    const team = abbr ? canonicalTeam(abbr) : null;
+    if (!team || pace == null) continue;
+    rows.push({ team, pace });
+  }
+  return rows;
+}
+
 export function pageIsCurrentSeason(html: string): boolean {
   return html.includes("2026-27");
 }
