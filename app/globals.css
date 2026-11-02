@@ -91,8 +91,92 @@ details.step-line > summary::marker { content: ""; }
 .finding p { margin: 4px 0; }
 .login { max-width: 420px; margin: 10vh auto; padding: 24px; }
 
+.top-actions { display: flex; gap: 8px; align-items: center; }
+.about-open {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+}
+.about-back {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(29, 25, 20, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.about {
+  width: min(880px, 100%);
+  max-height: min(90vh, 820px);
+  overflow: auto;
+  background: var(--bg);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 16px 50px rgba(29, 25, 20, 0.2);
+}
+.about-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.about-head h2 { margin: 0; font-size: 28px; }
+.source-board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
+.source-card, .math-box {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  border-top-width: 4px;
+  padding: 10px;
+}
+.source-card { display: grid; gap: 4px; }
+.source-card b { font-size: 15px; }
+.source-card span { color: var(--muted); font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; }
+.about-block h3 { margin: 14px 0 8px; font-size: 18px; }
+.math { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.math.finish { margin-top: 16px; }
+.math-piece { display: flex; align-items: center; gap: 6px; }
+.math-box {
+  min-width: 132px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "site how" "piece how";
+  column-gap: 8px;
+  align-items: center;
+}
+.math-box .site { grid-area: site; color: var(--muted); font-family: ui-sans-serif, system-ui, sans-serif; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+.math-box b { grid-area: piece; font-size: 16px; }
+.math-box .how { grid-area: how; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; color: var(--ink); }
+.math.finish .math-box { grid-template-columns: 1fr; grid-template-areas: "site" "piece"; min-width: 0; }
+.math-op { color: var(--muted); font-family: ui-sans-serif, system-ui, sans-serif; font-size: 18px; }
+.tone-accent { border-top-color: var(--accent); }
+.tone-accent .site { color: var(--accent); }
+.tone-info { border-top-color: var(--info); }
+.tone-info .site { color: var(--info); }
+.tone-warn { border-top-color: var(--warn); }
+.tone-warn .site { color: var(--warn); }
+.tone-good { border-top-color: var(--good); }
+.tone-good .site { color: var(--good); }
+.tone-ink { border-top-color: var(--ink); }
+.unused {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+}
+.unused b {
+  font-weight: 600;
+  background: #efeae2;
+  border-radius: 999px;
+  padding: 4px 8px;
+}
+
 @media (max-width: 720px) {
   h1 { font-size: 28px; }
   .shell { padding: 18px 12px 48px; }
   th, td { padding: 8px; }
+  .source-board { grid-template-columns: 1fr 1fr; }
 }

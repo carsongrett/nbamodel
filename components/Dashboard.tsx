@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Grade, Settings, SlateStat, SlateView, Stat } from "../lib/engine";
+import AboutDesk from "./AboutDesk";
 
 type Payload = {
   ok?: boolean;
@@ -73,6 +74,11 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   const [importText, setImportText] = useState("");
   const [actualsText, setActualsText] = useState("");
   const [actualsAdapter, setActualsAdapter] = useState<"csv" | "json">("csv");
+  const [aboutOpen, setAboutOpen] = useState(false);
+
+  useEffect(() => {
+    if (window.location.hash === "#about") setAboutOpen(true);
+  }, []);
 
   async function load(nextDate = date) {
     const response = await fetch(`/api/slate?date=${nextDate}`);
@@ -163,7 +169,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   const rows = useMemo(() => {
     return (slate?.rows ?? []).filter((row) => (gameId ? row.gameId === gameId : true) && (teamId ? row.teamId === teamId : true));
   }, [slate, gameId, teamId]);
-  const summary = slate?.summaries[stat];
 
   async function readFile(file: File | undefined, target: "import" | "actuals") {
     if (!file) return;
@@ -180,9 +185,12 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
           <h1>Player prop desk</h1>
           <p className="sub">Points, rebounds, and points plus rebounds. SportsLine is the outside projection. The points line is only a weight on last-15 and the minutes share.</p>
         </div>
-        {authConfigured ? (
-          <button className="ghost" type="button" onClick={() => void fetch("/api/auth/logout", { method: "POST" }).then(() => { window.location.href = "/login"; })}>Sign out</button>
-        ) : null}
+        <div className="top-actions">
+          <button className="about-open" type="button" aria-haspopup="dialog" aria-expanded={aboutOpen} onClick={() => setAboutOpen(true)}>?</button>
+          {authConfigured ? (
+            <button className="ghost" type="button" onClick={() => void fetch("/api/auth/logout", { method: "POST" }).then(() => { window.location.href = "/login"; })}>Sign out</button>
+          ) : null}
+        </div>
       </header>
 
       <div className="banner">
@@ -239,17 +247,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
           </ul>
         ) : null}
       </section>
-
-      {summary ? (
-        <section className="summary" aria-label="Saved result summary">
-          <div><span>Eligible picks</span><strong>{summary.eligible}</strong></div>
-          <div><span>Win rate</span><strong>{summary.winRate == null ? "—" : `${(summary.winRate * 100).toFixed(1)}%`}</strong></div>
-          <div><span>Wins / losses</span><strong>{summary.wins}/{summary.losses}</strong></div>
-          <div><span>Pushes</span><strong>{summary.pushes}</strong></div>
-          <div><span>DNP / unresolved</span><strong>{summary.dnps}/{summary.unresolved}</strong></div>
-          <div><span>Mean abs. error</span><strong>{fmt(summary.meanAbsoluteError, 2)}</strong></div>
-        </section>
-      ) : null}
 
       <div className="table-wrap">
         <table>
@@ -398,6 +395,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
           </div>
         </section>
       </div>
+      {aboutOpen ? <AboutDesk onClose={() => setAboutOpen(false)} /> : null}
     </main>
   );
 }
@@ -409,7 +407,7 @@ function Trace({ stat, implied, locked }: { stat: SlateStat; implied: string | n
       <summary>Projection trace</summary>
       <div className="trace-body">
         {stat.baseline != null ? (
-          <Step label="Baseline" value={fmt(stat.baseline)} detail={stat.sourcesUsed.length ? stat.sourcesUsed.join(", ") : null} />
+          <Step label="SL projection" value={fmt(stat.baseline)} detail={stat.sourcesUsed.length ? stat.sourcesUsed.join(", ") : null} />
         ) : null}
         {stat.adjustments.map((adjustment) => (
           <Step
