@@ -17,8 +17,8 @@ Put `BETTINGPROS_API_KEY` in `.env.local` and restart the server when you want c
 Then:
 
 1. **Run Model** to save a pregame projection, line, odds, and timestamp.
-2. After the game, import actuals or press **Update Results**.
-3. Grades use the saved line. The projection does not move after actuals are stored.
+2. On a later day, **Refresh games**. That download already includes Basketball Reference daily leaders for the previous 15 dates. Box scores are stored for games already on the desk, and those games are marked final.
+3. Open the earlier date. Grades use the saved line. The projection does not move after actuals are stored.
 
 ## Environment
 
@@ -45,9 +45,9 @@ Storage uses Supabase only when the URL and service role key are set. Otherwise 
 
 Research Slate calls the provider from the server. If the provider or key is missing, or the provider name is not `openai`, the button returns a setup-needed message and stores nothing. It does not invent injuries. Web pages are passed to the model as untrusted data. A minutes suggestion does not replace SportsLine minutes.
 
-Nothing is scheduled. Run Model, Update Results, imports, Research Slate, and the source buttons are manual.
+Nothing is scheduled. Run Model, imports, Research Slate, and the source buttons are manual. The next **Refresh games** is what writes the earlier box scores.
 
-**Refresh games** reads Basketball Reference (season usage, season rebounds per minute, the prior 15 daily leader pages, and that date’s leaders), the SportsLine simulation table, and Hashtag defense vs position. It keeps SportsLine rows that match one Basketball Reference player by exact normalized name and team, and it removes sample rows. When `BETTINGPROS_API_KEY` is set, it also reads that day’s events and consensus lines for points (market 156), rebounds (157), and points plus rebounds (336), book 0. Paging starts only after the first offers page parses. **Check BettingPros** runs that same odds fetch on its own.
+**Refresh games** reads Basketball Reference (season usage, season rebounds per minute, the prior 15 daily leader pages, and that date’s leaders), the SportsLine simulation table, and Hashtag defense vs position. It keeps SportsLine rows that match one Basketball Reference player by exact normalized name and team, and it removes sample rows. Leader pages for earlier dates grade a game only when that game is already stored. Players who are not already on the desk are skipped. The selected date still stores its own leaders and can add that day’s games. When `BETTINGPROS_API_KEY` is set, it also reads that day’s events and consensus lines for points (market 156), rebounds (157), and points plus rebounds (336), book 0. Paging starts only after the first offers page parses. **Check BettingPros** runs that same odds fetch on its own.
 
 ## Database
 

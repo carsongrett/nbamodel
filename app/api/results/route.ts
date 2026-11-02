@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       const payload = slatePayload(next, date);
       const onDate = payload.slate.rows.length;
       if (!text.trim() && !next.actuals.some((row) => payload.slate.rows.some((slateRow) => slateRow.playerId === row.playerId && slateRow.gameId === row.gameId))) {
-        message = "No actuals are stored for this date. Import a CSV or JSON file, or import the sample actuals. No live stats feed is configured.";
+        message = "No box scores are stored for this date yet. Refresh games on a later day grades games already on the desk from Basketball Reference daily leaders.";
       }
       return { db: next, result: { ...payload, message, import: imported, players: onDate } };
     });

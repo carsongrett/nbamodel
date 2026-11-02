@@ -72,8 +72,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   const [adapter, setAdapter] = useState<"csv" | "json">("csv");
   const [kind, setKind] = useState("projections");
   const [importText, setImportText] = useState("");
-  const [actualsText, setActualsText] = useState("");
-  const [actualsAdapter, setActualsAdapter] = useState<"csv" | "json">("csv");
   const [aboutOpen, setAboutOpen] = useState(false);
 
   useEffect(() => {
@@ -170,11 +168,9 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
     return (slate?.rows ?? []).filter((row) => (gameId ? row.gameId === gameId : true) && (teamId ? row.teamId === teamId : true));
   }, [slate, gameId, teamId]);
 
-  async function readFile(file: File | undefined, target: "import" | "actuals") {
+  async function readFile(file: File | undefined) {
     if (!file) return;
-    const text = await file.text();
-    if (target === "import") setImportText(text);
-    else setActualsText(text);
+    setImportText(await file.text());
   }
 
   return (
@@ -251,7 +247,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       <div className="table-wrap">
         <table>
           <caption className="meta" style={{ captionSide: "bottom", padding: 10 }}>
-            A player is listed when one published name matches that team. Grades use the saved pregame line. Pushes, DNPs, unresolved games, and no-picks are outside the win rate. {STATS.find((item) => item.id === stat)?.label}.
+            A player is listed when one published name matches that team. Grades use the saved pregame line. Refresh games on a later day fills those results from Basketball Reference. Pushes, DNPs, unresolved games, and no-picks are outside the win rate. {STATS.find((item) => item.id === stat)?.label}.
           </caption>
           <thead>
             <tr>
@@ -312,25 +308,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
 
       <div className="panels">
         <section className="card">
-          <h2>Update results</h2>
-          <p className="sub">Imports actuals through the CSV or JSON adapter and grades the saved pregame record. It does not rewrite projections, lines, odds, or the saved time.</p>
-          <div className="row">
-            <label>
-              Actuals adapter
-              <select value={actualsAdapter} onChange={(event) => setActualsAdapter(event.target.value as "csv" | "json")}>
-                <option value="csv">CSV</option>
-                <option value="json">JSON</option>
-              </select>
-            </label>
-            <label>
-              Actuals file
-              <input type="file" accept=".csv,.json,text/csv,application/json" onChange={(event) => void readFile(event.target.files?.[0], "actuals")} />
-            </label>
-            <button className="primary" type="button" disabled={busy} onClick={() => void post("/api/results", actualsText ? { text: actualsText, adapter: actualsAdapter } : {}, "Updating results…")}>Update Results</button>
-          </div>
-        </section>
-
-        <section className="card">
           <h2>Research</h2>
           {slate?.research.length ? slate.research.map((finding) => (
             <article className="finding" key={finding.id}>
@@ -389,7 +366,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
             </label>
             <label>
               File
-              <input type="file" accept=".csv,.json,text/csv,application/json" onChange={(event) => void readFile(event.target.files?.[0], "import")} />
+              <input type="file" accept=".csv,.json,text/csv,application/json" onChange={(event) => void readFile(event.target.files?.[0])} />
             </label>
             <button className="primary" type="button" disabled={busy || !importText} onClick={() => void post("/api/import", { adapter, kind, text: importText }, "Importing…")}>Import file</button>
           </div>

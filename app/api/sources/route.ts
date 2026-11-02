@@ -20,11 +20,15 @@ export async function POST(request: Request) {
       const next = odds.state === "parsed" ? oddsApplied.db : applied.db;
       const messages = [...applied.messages, ...oddsApplied.messages];
       const errors = messages.filter((item) => item.level === "error").length;
+      const graded = messages.find((item) => item.message.startsWith("Basketball Reference leaders graded"));
+      const lead = graded
+        ? `Today's slate loaded for ${date}. ${graded.message}`
+        : `Today's slate loaded for ${date}.`;
       return {
         db: next,
         result: {
           ...slatePayload(next, date),
-          message: `Today's slate loaded for ${date}. ${errors} source errors are listed below.`,
+          message: errors ? `${lead} ${errors} source errors are listed below.` : lead,
           messages,
         },
       };

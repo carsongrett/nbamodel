@@ -171,6 +171,43 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
     }
     rates = upsertByKey(rates, [next], (rate) => rate.playerId).rows;
   };
+  const storeLeaderActuals = (html: string, date: string, createGames: boolean) => {
+    let stored = 0;
+    let missingRoster = 0;
+    for (const row of parseBrefPlayers(html)) {
+      if (!row.team || !row.opponent) continue;
+      const away = row.location === "@" ? row.team : row.opponent;
+      const home = row.location === "@" ? row.opponent : row.team;
+      const gameId = matchupGameId(date, away, home);
+      if (!createGames && !games.some((game) => game.gameId === gameId)) continue;
+      ensureTeam(away);
+      ensureTeam(home);
+      ensureGame({
+        gameId,
+        season: CURRENT_SEASON,
+        gameDate: date,
+        homeTeamId: home,
+        awayTeamId: away,
+        status: "final",
+      });
+      if (!players.some((player) => player.playerId === row.playerId)) {
+        missingRoster++;
+        continue;
+      }
+      const actual: Actual = {
+        playerId: row.playerId,
+        gameId,
+        season: CURRENT_SEASON,
+        dnp: row.dnp,
+        points: row.dnp ? null : row.points,
+        rebounds: row.dnp ? null : row.rebounds,
+        sourceTimestamp: fetched.retrievedAt,
+      };
+      actuals = upsertByKey(actuals, [actual], (item) => `${item.playerId}|${item.gameId}`).rows;
+      stored++;
+    }
+    return { stored, missingRoster };
+  };
 
   const seasonPages: { label: string; page: FetchedPage; kind: "advanced" | "perGame" }[] = [
     { label: "Basketball Reference advanced", page: fetched.advanced, kind: "advanced" },
@@ -296,33 +333,28 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
   if (!fetched.actuals.ok) {
     messages.push({ level: "error", playerId: null, message: `Daily leaders for ${slateDate} failed: ${fetched.actuals.error}` });
   } else {
-    let stored = 0;
-    let missingRoster = 0;
-    for (const row of parseBrefPlayers(fetched.actuals.html)) {
-      if (!row.team || !row.opponent) continue;
-      const away = row.location === "@" ? row.team : row.opponent;
-      const home = row.location === "@" ? row.opponent : row.team;
-      ensureTeam(away);
-      ensureTeam(home);
-      const gameId = matchupGameId(slateDate, away, home);
-      ensureGame({ gameId, season: CURRENT_SEASON, gameDate: slateDate, homeTeamId: home, awayTeamId: away, status: "final" });
-      if (!players.some((player) => player.playerId === row.playerId)) {
-        missingRoster++;
-        continue;
-      }
-      const actual: Actual = {
-        playerId: row.playerId,
-        gameId,
-        season: CURRENT_SEASON,
-        dnp: row.dnp,
-        points: row.dnp ? null : row.points,
-        rebounds: row.dnp ? null : row.rebounds,
-        sourceTimestamp: fetched.retrievedAt,
-      };
-      actuals = upsertByKey(actuals, [actual], (item) => `${item.playerId}|${item.gameId}`).rows;
-      stored++;
+    const result = storeLeaderActuals(fetched.actuals.html, slateDate, true);
+    messages.push({ level: "info", playerId: null, message: `Daily leaders actuals stored: ${result.stored}. ${result.missingRoster} rows had no roster id and were skipped.` });
+  }
+
+  let priorStored = 0;
+  let priorDates = 0;
+  for (const day of fetched.last15) {
+    if (!day.page.ok) continue;
+    const result = storeLeaderActuals(day.page.html, day.date, false);
+    if (result.stored > 0) {
+      priorStored += result.stored;
+      priorDates += 1;
     }
-    messages.push({ level: "info", playerId: null, message: `Daily leaders actuals stored: ${stored}. ${missingRoster} rows had no roster id and were skipped.` });
+  }
+  if (priorStored > 0) {
+    const results = priorStored === 1 ? "1 result" : `${priorStored} results`;
+    const dates = priorDates === 1 ? "1 earlier date" : `${priorDates} earlier dates`;
+    messages.push({
+      level: "info",
+      playerId: null,
+      message: `Basketball Reference leaders graded ${results} on ${dates} already on the desk.`,
+    });
   }
 
   if (!fetched.hashtag.ok) {

@@ -162,6 +162,42 @@ test("public pages match one exact name, skip a non-current season, and do not d
   assert.match(old.messages.map((item) => item.message).join(" "), /not a 2026–27 page/);
 });
 
+test("a later refresh grades box scores for games already on the desk", () => {
+  const dayOne = applyPublicPages(emptyDatabase(), "2026-11-01", bundle({
+    actuals: page("<table></table>"),
+    last15: [],
+  }));
+  assert.equal(dayOne.db.players[0]?.playerId, "doncilu01");
+  assert.equal(dayOne.db.games.find((game) => game.gameId === "2026-11-01|TOR@LAL")?.status, "scheduled");
+  assert.equal(dayOne.db.actuals.length, 0);
+
+  const leaders = page(`<table><tr>
+    <td data-stat="player" data-append-csv="doncilu01">Luka Doncic</td>
+    <td data-stat="team_id">LAL</td>
+    <td data-stat="game_location"></td>
+    <td data-stat="opp_id">TOR</td>
+    <td data-stat="pts">28</td>
+    <td data-stat="trb">11</td>
+  </tr><tr>
+    <td data-stat="player" data-append-csv="nobody01">Nobody</td>
+    <td data-stat="team_id">BOS</td>
+    <td data-stat="opp_id">NYK</td>
+    <td data-stat="pts">4</td>
+    <td data-stat="trb">1</td>
+  </tr></table>`);
+  const dayTwo = applyPublicPages(dayOne.db, "2026-11-02", bundle({
+    last15: [{ date: "2026-11-01", page: leaders }],
+    actuals: page("<table></table>"),
+  }));
+  assert.equal(dayTwo.db.games.find((game) => game.gameId === "2026-11-01|TOR@LAL")?.status, "final");
+  assert.equal(dayTwo.db.actuals.length, 1);
+  assert.equal(dayTwo.db.actuals[0]?.points, 28);
+  assert.equal(dayTwo.db.actuals[0]?.rebounds, 11);
+  assert.equal(dayTwo.db.players.some((player) => player.playerId === "nobody01"), false);
+  assert.equal(dayTwo.db.games.some((game) => game.gameId === "2026-11-01|NYK@BOS"), false);
+  assert.match(dayTwo.messages.map((item) => item.message).join(" "), /graded 1 result on 1 earlier date/);
+});
+
 test("sportsline names match only one normalized player on the same team", () => {
   const accentRoster = roster([{ id: "doncilu01", name: "Luka Doncic", team: "LAL" }]);
   const accent = applyPublicPages(emptyDatabase(), "2026-11-02", bundle({
