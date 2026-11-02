@@ -1,25 +1,44 @@
+import { bettingProsKeyIssue, projectDir, readProjectEnv } from "./env-file";
+
 export const BETTINGPROS_BASE = "https://api.bettingpros.com/v3";
 export const POINTS_MARKET_ID = 156;
 export const REBOUNDS_MARKET_ID = 157;
 export const POINTS_REBOUNDS_MARKET_ID = 336;
 export const CONSENSUS_BOOK_ID = 0;
 
+function diskKeyAllowed(): boolean {
+  return !process.env.NODE_TEST_CONTEXT && process.env.npm_lifecycle_event !== "test";
+}
+
 export function bettingProsKey(): string | null {
-  const key = process.env.BETTINGPROS_API_KEY?.trim();
-  return key ? key : null;
+  const fromProcess = process.env.BETTINGPROS_API_KEY?.trim();
+  if (fromProcess) return fromProcess;
+  if (!diskKeyAllowed()) return null;
+  return readProjectEnv(projectDir()).key;
 }
 
 export function bettingProsAvailability(): { state: "ready" | "setup_needed"; message: string } {
-  if (!bettingProsKey()) {
+  const fromProcess = process.env.BETTINGPROS_API_KEY?.trim();
+  if (fromProcess) {
+    return {
+      state: "ready",
+      message: "BettingPros key is set. A refresh loads today's events, then consensus points, rebounds, and points-plus-rebounds lines. Further pages run only after the first offers page parses, and the desk stops at 40 calls.",
+    };
+  }
+  if (!diskKeyAllowed()) {
     return {
       state: "setup_needed",
       message: "BettingPros is not configured. Set BETTINGPROS_API_KEY on the server. No odds call is made.",
     };
   }
-  return {
-    state: "ready",
-    message: "BettingPros key is set. A refresh loads today's events, then consensus points, rebounds, and points-plus-rebounds lines. Further pages run only after the first offers page parses, and the desk stops at 40 calls.",
-  };
+  const report = readProjectEnv(projectDir());
+  if (report.key) {
+    return {
+      state: "ready",
+      message: `BettingPros key was read from ${report.source} in ${report.directory}. Refresh games loads today's lines. A server restart is not required.`,
+    };
+  }
+  return { state: "setup_needed", message: `${bettingProsKeyIssue(report)} No odds call is made.` };
 }
 
 type FetchLike = (url: string, init: { headers: Record<string, string> }) => Promise<{ ok: boolean; status: number; text: () => Promise<string> }>;

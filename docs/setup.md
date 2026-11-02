@@ -22,7 +22,7 @@ Then:
 
 ## Environment
 
-Copy `.env.example` to `.env.local`. Leave it blank for local use.
+Copy `.env.example` to `.env.local` in the same folder as `package.json`. Leave it blank for local use. The server reads that file on every request. For BettingPros the line is `BETTINGPROS_API_KEY=` followed by the key. Saving the file is enough; the next page load picks it up, and the banner names the folder it searched when the key is missing.
 
 | Variable | Role |
 | --- | --- |

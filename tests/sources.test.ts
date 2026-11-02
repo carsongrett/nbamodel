@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { CURRENT_SEASON, emptyDatabase, type Player } from "../lib/engine.ts";
 import { applyPublicPages, stripSample, type FetchedPage, type PublicFetch } from "../lib/sources/apply.ts";
 import { applyBettingProsProbe } from "../lib/sources/apply-bettingpros.ts";
 import { fetchBettingProsDay, type ProbeResult } from "../lib/sources/bettingpros.ts";
+import { parseEnvText, readProjectEnv } from "../lib/sources/env-file.ts";
 import { parseSportsLine } from "../lib/sources/parsers.ts";
 import { canonicalTeam } from "../lib/sources/teams.ts";
 
@@ -67,6 +71,20 @@ function bundle(overrides: Partial<PublicFetch> = {}): PublicFetch {
     ...overrides,
   };
 }
+
+test("env files accept a named key, quotes, and a bare key", () => {
+  assert.equal(parseEnvText("BETTINGPROS_API_KEY=abc123\n").BETTINGPROS_API_KEY, "abc123");
+  assert.equal(parseEnvText("export BETTINGPROS_API_KEY=\"abc 123\"\n").BETTINGPROS_API_KEY, "abc 123");
+  assert.equal(parseEnvText("only-the-key-value-0123456789\n").BETTINGPROS_API_KEY, "only-the-key-value-0123456789");
+  const directory = mkdtempSync(join(tmpdir(), "nbamodel-env-"));
+  writeFileSync(join(directory, ".env"), "BETTINGPROS_API_KEY=\nOTHER=1\n");
+  writeFileSync(join(directory, ".env.local"), "BETTINGPROS_API_KEY=from-local\n");
+  const report = readProjectEnv(directory);
+  assert.equal(report.key, "from-local");
+  assert.equal(report.source, ".env.local");
+  assert.deepEqual(report.names.sort(), ["BETTINGPROS_API_KEY", "OTHER"]);
+  rmSync(directory, { recursive: true });
+});
 
 test("team aliases are exact and combined rows are not teams", () => {
   assert.equal(canonicalTeam("BRK"), "BKN");
