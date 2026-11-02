@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Adjustment, Grade, Settings, SlateStat, SlateView, Stat } from "../lib/engine";
+import type { Grade, Settings, SlateStat, SlateView, Stat } from "../lib/engine";
 
 type Payload = {
   ok?: boolean;
@@ -436,32 +436,41 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
 }
 
 function Trace({ stat, implied, locked }: { stat: SlateStat; implied: string | null; locked: boolean }) {
+  const projectionDetail = [locked ? "Locked after actuals." : null, stat.blockReason].filter(Boolean).join(" ");
   return (
     <details className="trace">
       <summary>Projection trace</summary>
       <div className="trace-body">
-        {locked ? <div className="detail">Locked after actuals. This is the saved pregame trace.</div> : null}
-        {stat.savedAt ? <div className="detail">Saved {stat.savedAt}</div> : <div className="detail">Not saved yet. Run Model to keep a pregame record.</div>}
-        {stat.baseline != null ? <Step label="Baseline" value={fmt(stat.baseline)} /> : null}
-        {stat.sourcesUsed.length ? <div className="detail">Sources: {stat.sourcesUsed.join(", ")}</div> : null}
-        {stat.adjustments.map((adjustment) => <AdjustmentRow key={adjustment.key} adjustment={adjustment} />)}
-        <Step label="Projection" value={stat.projection == null ? "Blocked" : fmt(stat.projection)} />
-        {implied ? <div className="detail">{implied}</div> : null}
+        {stat.baseline != null ? (
+          <Step label="Baseline" value={fmt(stat.baseline)} detail={stat.sourcesUsed.length ? stat.sourcesUsed.join(", ") : null} />
+        ) : null}
+        {stat.adjustments.map((adjustment) => (
+          <Step
+            key={adjustment.key}
+            label={adjustment.label}
+            value={adjustment.status === "applied" ? fmt(adjustment.delta) : "skipped"}
+            detail={adjustment.detail}
+          />
+        ))}
+        <Step label="Projection" value={stat.projection == null ? "Blocked" : fmt(stat.projection)} detail={projectionDetail || null} />
+        {implied ? <Step label="Team points" value="" detail={implied} /> : null}
       </div>
     </details>
   );
 }
 
-function AdjustmentRow({ adjustment }: { adjustment: Adjustment }) {
-  return (
-    <div className="step">
-      <span>{adjustment.label}</span>
-      <b>{adjustment.status === "applied" ? fmt(adjustment.delta) : "skipped"}</b>
-      <div className="detail">{adjustment.detail}</div>
-    </div>
+function Step({ label, value, detail }: { label: string; value: string; detail?: string | null }) {
+  const line = (
+    <>
+      <span>{label}</span>
+      <b>{value}</b>
+    </>
   );
-}
-
-function Step({ label, value }: { label: string; value: string }) {
-  return <div className="step"><span>{label}</span><b>{value}</b></div>;
+  if (!detail) return <div className="step">{line}</div>;
+  return (
+    <details className="step-line">
+      <summary className="step">{line}</summary>
+      <div className="detail">{detail}</div>
+    </details>
+  );
 }

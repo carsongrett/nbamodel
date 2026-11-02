@@ -67,12 +67,21 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-fam
 .grade.dnp, .grade.unresolved { color: var(--warn); }
 
 details.trace { margin-top: 6px; }
-details.trace summary { cursor: pointer; color: var(--accent); }
-.trace-body { margin-top: 8px; display: grid; gap: 4px; min-width: 280px; }
-.step { display: grid; grid-template-columns: 1fr auto; gap: 12px; font-size: 13px; }
+details.trace > summary { cursor: pointer; color: var(--accent); }
+.trace-body { margin-top: 8px; display: grid; gap: 2px; min-width: 220px; }
+.step {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 13px;
+}
+details.step-line > summary { cursor: pointer; list-style: none; }
+details.step-line > summary::-webkit-details-marker { display: none; }
+details.step-line > summary::marker { content: ""; }
 .step span { color: var(--muted); }
 .step b { font-variant-numeric: tabular-nums; font-family: ui-monospace, Menlo, Consolas, monospace; }
-.detail { grid-column: 1 / -1; color: var(--muted); }
+.detail { margin: 2px 0 6px; color: var(--muted); font-size: 12px; }
 
 .panels { display: grid; gap: 12px; margin-top: 16px; }
 .card { padding: 14px 16px; }
