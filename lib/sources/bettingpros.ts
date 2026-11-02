@@ -18,7 +18,7 @@ export function bettingProsAvailability(): { state: "ready" | "setup_needed"; me
   }
   return {
     state: "ready",
-    message: "BettingPros key is set. Check BettingPros makes one events call and one points offers page, then stops.",
+    message: "BettingPros key is set. A refresh loads today's events, then consensus points, rebounds, and points-plus-rebounds lines. Further pages run only after the first offers page parses, and the desk stops at 40 calls.",
   };
 }
 
@@ -35,6 +35,8 @@ export type ParsedEvent = {
 export type ParsedOffer = {
   eventId: string | null;
   playerId: string | null;
+  name: string | null;
+  marketId: number | null;
   line: number | null;
   overOdds: number | null;
   underOdds: number | null;
@@ -115,26 +117,28 @@ function bookLine(books: unknown): { line: number | null; odds: number | null } 
   return { line: null, odds: null };
 }
 
-export function parseOffersPage(body: string): { offers: ParsedOffer[]; parsed: boolean; furtherPages: number | null } {
+const LIVE_MARKETS = new Set([POINTS_MARKET_ID, REBOUNDS_MARKET_ID, POINTS_REBOUNDS_MARKET_ID]);
+
+export function parseOffersPage(body: string): { offers: ParsedOffer[]; parsed: boolean; page: number | null; totalPages: number | null; furtherPages: number | null } {
   let json: unknown;
   try {
     json = JSON.parse(body);
   } catch {
-    return { offers: [], parsed: false, furtherPages: null };
+    return { offers: [], parsed: false, page: null, totalPages: null, furtherPages: null };
   }
   const root = record(json);
   const list = root && Array.isArray(root.offers) ? root.offers : null;
-  if (!list) return { offers: [], parsed: false, furtherPages: null };
+  if (!list) return { offers: [], parsed: false, page: null, totalPages: null, furtherPages: null };
   const pagination = record(root?.pagination) ?? record(root?._pagination);
-  const page = num(pagination?.page) ?? 1;
+  const page = num(pagination?.page);
   const total = num(pagination?.total_pages);
-  const furtherPages = total == null ? null : Math.max(0, total - page);
+  const furtherPages = total == null ? null : Math.max(0, total - (page ?? 1));
   const offers: ParsedOffer[] = [];
   for (const item of list) {
     const row = record(item);
     if (!row) continue;
     const market = num(row.market_id);
-    if (market != null && market !== POINTS_MARKET_ID) continue;
+    if (market != null && !LIVE_MARKETS.has(market)) continue;
     const selections = Array.isArray(row.selections) ? row.selections : [];
     let line: number | null = null;
     let overOdds: number | null = null;
@@ -152,15 +156,32 @@ export function parseOffersPage(body: string): { offers: ParsedOffer[]; parsed: 
     offers.push({
       eventId: text(row.event_id),
       playerId: text(row.player_id) ?? text(participant?.id),
+      name: text(row.player_name) ?? text(row.name) ?? text(participant?.name) ?? text(participant?.player_name),
+      marketId: market,
       line,
       overOdds,
       underOdds,
     });
   }
-  return { offers, parsed: true, furtherPages };
+  return { offers, parsed: true, page, totalPages: total, furtherPages };
 }
 
-export async function probeBettingPros(date: string, fetchImpl?: FetchLike): Promise<ProbeResult> {
+const MAX_BETTINGPROS_CALLS = 40;
+
+function offersUrl(eventId: string, marketId: number, page?: number): string {
+  const base = `${BETTINGPROS_BASE}/offers?sport=NBA&event_id=${encodeURIComponent(eventId)}&market_id=${marketId}&book_id=${CONSENSUS_BOOK_ID}`;
+  return page && page > 1 ? `${base}&page=${page}` : base;
+}
+
+function stampOffers(offers: ParsedOffer[], eventId: string, marketId: number): ParsedOffer[] {
+  return offers.map((offer) => ({
+    ...offer,
+    eventId: offer.eventId ?? eventId,
+    marketId: offer.marketId ?? marketId,
+  }));
+}
+
+export async function fetchBettingProsDay(date: string, fetchImpl?: FetchLike): Promise<ProbeResult> {
   const key = bettingProsKey();
   if (!key) {
     return {
@@ -217,11 +238,11 @@ export async function probeBettingPros(date: string, fetchImpl?: FetchLike): Pro
       furtherPages: null,
     };
   }
-  const offersUrl = `${BETTINGPROS_BASE}/offers?sport=NBA&event_id=${encodeURIComponent(first.id)}&market_id=${POINTS_MARKET_ID}&book_id=${CONSENSUS_BOOK_ID}`;
-  calls.push(offersUrl);
-  let offersResponse: { ok: boolean; status: number; text: () => Promise<string> };
+  const proofUrl = offersUrl(first.id, POINTS_MARKET_ID);
+  calls.push(proofUrl);
+  let proofResponse: { ok: boolean; status: number; text: () => Promise<string> };
   try {
-    offersResponse = await fetchPage(offersUrl, { headers });
+    proofResponse = await fetchPage(proofUrl, { headers });
   } catch (error) {
     return {
       state: "error",
@@ -232,27 +253,91 @@ export async function probeBettingPros(date: string, fetchImpl?: FetchLike): Pro
       furtherPages: null,
     };
   }
-  const offersBody = await offersResponse.text();
-  if (!offersResponse.ok) {
+  const proofBody = await proofResponse.text();
+  if (!proofResponse.ok) {
     return {
       state: "error",
-      message: `BettingPros offers returned HTTP ${offersResponse.status}. Stopped after one page.`,
+      message: `BettingPros offers returned HTTP ${proofResponse.status}. Stopped before any other odds calls.`,
       calls,
       events: events.events,
       offers: [],
       furtherPages: null,
     };
   }
-  const offers = parseOffersPage(offersBody);
-  const extra = offers.furtherPages && offers.furtherPages > 0 ? ` ${offers.furtherPages} more pages were left unread.` : "";
+  const proof = parseOffersPage(proofBody);
+  if (!proof.parsed) {
+    return {
+      state: "unparsed",
+      message: "Offers page did not match the parser. Stopped before any other odds calls.",
+      calls,
+      events: events.events,
+      offers: [],
+      furtherPages: null,
+    };
+  }
+
+  const offers = stampOffers(proof.offers, first.id, POINTS_MARKET_ID);
+  let unread = 0;
+  let stopped = "";
+  let halt = false;
+
+  const pull = async (eventId: string, marketId: number, page: number) => {
+    const url = offersUrl(eventId, marketId, page);
+    calls.push(url);
+    try {
+      const response = await fetchPage(url, { headers });
+      const body = await response.text();
+      return { ok: response.ok, status: response.status, body };
+    } catch (error) {
+      return { ok: false, status: 0, body: error instanceof Error ? error.message : "BettingPros offers call failed." };
+    }
+  };
+
+  for (const event of events.events) {
+    for (const marketId of [POINTS_MARKET_ID, REBOUNDS_MARKET_ID, POINTS_REBOUNDS_MARKET_ID]) {
+      const known = event.id === first.id && marketId === POINTS_MARKET_ID ? proof : null;
+      let totalPages = known ? (known.totalPages ?? 1) : null;
+      for (let page = known ? 2 : 1; totalPages == null || page <= totalPages; page += 1) {
+        if (calls.length >= MAX_BETTINGPROS_CALLS) {
+          unread += totalPages == null ? 1 : Math.max(0, totalPages - page + 1);
+          stopped = `Stopped at ${MAX_BETTINGPROS_CALLS} calls.`;
+          halt = true;
+          break;
+        }
+        const response = await pull(event.id, marketId, page);
+        if (!response.ok) {
+          stopped = response.status ? `Stopped after HTTP ${response.status}.` : `Stopped: ${response.body}`;
+          halt = true;
+          break;
+        }
+        const parsed = parseOffersPage(response.body);
+        if (!parsed.parsed) {
+          stopped = "A later offers page did not match the parser, so paging stopped.";
+          halt = true;
+          break;
+        }
+        if (page > 1 && parsed.page === 1) {
+          stopped = "Paging stopped because an offers page still reported page 1.";
+          break;
+        }
+        if (totalPages == null) totalPages = parsed.totalPages ?? 1;
+        offers.push(...stampOffers(parsed.offers, event.id, marketId));
+        if (page >= totalPages) break;
+      }
+      if (halt) break;
+    }
+    if (halt) break;
+  }
+
+  const tail = stopped ? ` ${stopped}` : "";
   return {
-    state: offers.parsed ? "parsed" : "unparsed",
-    message: offers.parsed
-      ? `Checked one events call and one points offers page for event ${first.id}, then stopped.${extra}`
-      : "Offers page did not match the parser. Stopped. Full-slate paging stays off.",
+    state: "parsed",
+    message: `Loaded ${events.events.length} events and ${offers.length} consensus lines for ${date}.${tail}`,
     calls,
     events: events.events,
-    offers: offers.offers,
-    furtherPages: offers.furtherPages,
+    offers,
+    furtherPages: unread,
   };
 }
+
+export const probeBettingPros = fetchBettingProsDay;

@@ -1,5 +1,7 @@
 import { readJson, respond, slatePayload, todayOr } from "../../../lib/http";
 import { applyPublicPages } from "../../../lib/sources/apply";
+import { applyBettingProsProbe } from "../../../lib/sources/apply-bettingpros";
+import { fetchBettingProsDay } from "../../../lib/sources/bettingpros";
 import { fetchPublicPages } from "../../../lib/sources/fetch-public";
 import { updateDatabase } from "../../../lib/store";
 
@@ -10,15 +12,20 @@ export async function POST(request: Request) {
     const body = await readJson(request);
     const date = todayOr(body.date);
     const fetched = await fetchPublicPages(date);
+    const odds = await fetchBettingProsDay(date);
+    const retrievedAt = new Date().toISOString();
     return updateDatabase(async (db) => {
       const applied = applyPublicPages(db, date, fetched);
-      const errors = applied.messages.filter((item) => item.level === "error").length;
+      const oddsApplied = applyBettingProsProbe(applied.db, date, odds, retrievedAt);
+      const next = odds.state === "parsed" ? oddsApplied.db : applied.db;
+      const messages = [...applied.messages, ...oddsApplied.messages];
+      const errors = messages.filter((item) => item.level === "error").length;
       return {
-        db: applied.db,
+        db: next,
         result: {
-          ...slatePayload(applied.db, date),
-          message: `Public sources refreshed for ${date}. ${errors} source errors are listed below. BettingPros was not called.`,
-          messages: applied.messages,
+          ...slatePayload(next, date),
+          message: `Today's slate loaded for ${date}. ${errors} source errors are listed below.`,
+          messages,
         },
       };
     });

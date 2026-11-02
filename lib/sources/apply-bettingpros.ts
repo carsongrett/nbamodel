@@ -1,6 +1,13 @@
-import { CURRENT_SEASON, upsertByKey, type Database, type Game, type ModelMessage, type PropLine, type Vegas } from "../engine";
-import type { ProbeResult } from "./bettingpros";
+import { CURRENT_SEASON, upsertByKey, type Database, type Game, type IdMap, type ModelMessage, type PropLine, type Stat, type Vegas } from "../engine";
+import { POINTS_MARKET_ID, POINTS_REBOUNDS_MARKET_ID, REBOUNDS_MARKET_ID, type ProbeResult } from "./bettingpros";
+import { normalizePersonName } from "./names";
 import { canonicalTeam, matchupGameId } from "./teams";
+
+const STAT_BY_MARKET: Record<number, Stat> = {
+  [POINTS_MARKET_ID]: "points",
+  [REBOUNDS_MARKET_ID]: "rebounds",
+  [POINTS_REBOUNDS_MARKET_ID]: "points_rebounds",
+};
 
 export function applyBettingProsProbe(db: Database, date: string, probe: ProbeResult, retrievedAt: string): { db: Database; messages: ModelMessage[] } {
   const messages: ModelMessage[] = [{ level: probe.state === "error" || probe.state === "unparsed" ? "error" : "info", playerId: null, message: probe.message }];
@@ -9,6 +16,7 @@ export function applyBettingProsProbe(db: Database, date: string, probe: ProbeRe
   let games = db.games.slice();
   let vegas = db.vegas.slice();
   let lines = db.lines.slice();
+  let idMap = db.idMap.slice();
   const gameByEvent = new Map<string, string>();
   const ensureTeam = (teamId: string) => {
     if (!teams.some((team) => team.teamId === teamId)) teams = [...teams, { teamId, name: teamId }];
@@ -34,17 +42,37 @@ export function applyBettingProsProbe(db: Database, date: string, probe: ProbeRe
   let stored = 0;
   let unmapped = 0;
   for (const offer of probe.offers) {
-    if (offer.line == null || !offer.playerId || !offer.eventId) continue;
+    if (offer.line == null || !offer.eventId) continue;
+    const stat = offer.marketId == null ? undefined : STAT_BY_MARKET[offer.marketId];
     const gameId = gameByEvent.get(offer.eventId);
-    const mapped = db.idMap.find((item) => item.source === "bettingpros" && item.entityType === "player" && item.sourceId === offer.playerId);
-    if (!gameId || !mapped) {
+    const game = gameId ? games.find((row) => row.gameId === gameId) : undefined;
+    const mapped = offer.playerId
+      ? idMap.find((item) => item.source === "bettingpros" && item.entityType === "player" && item.sourceId === offer.playerId)
+      : undefined;
+    let playerId = mapped?.canonicalId ?? null;
+    if (!playerId && offer.name && game) {
+      const key = normalizePersonName(offer.name);
+      const sides = new Set([game.homeTeamId, game.awayTeamId]);
+      const hits = db.players.filter((player) => sides.has(player.teamId) && normalizePersonName(player.displayName) === key);
+      if (hits.length === 1) playerId = hits[0].playerId;
+    }
+    if (!gameId || !playerId || !stat) {
       unmapped++;
       continue;
     }
+    if (!mapped && (offer.playerId || offer.name)) {
+      const row: IdMap = {
+        source: "bettingpros",
+        entityType: "player",
+        sourceId: offer.playerId ?? offer.name ?? playerId,
+        canonicalId: playerId,
+      };
+      idMap = upsertByKey(idMap, [row], (item) => `${item.source}|${item.entityType}|${item.sourceId}`).rows;
+    }
     const line: PropLine = {
-      playerId: mapped.canonicalId,
+      playerId,
       gameId,
-      stat: "points",
+      stat,
       season: CURRENT_SEASON,
       line: offer.line,
       overOdds: offer.overOdds,
@@ -59,8 +87,8 @@ export function applyBettingProsProbe(db: Database, date: string, probe: ProbeRe
     messages.push({
       level: "info",
       playerId: null,
-      message: `Points lines stored from the one offers page: ${stored}. Unmapped or unmatched: ${unmapped}. Rebounds and points-plus-rebounds were not requested.`,
+      message: `Consensus lines stored: ${stored}. Unmatched names or markets: ${unmapped}.`,
     });
   }
-  return { db: { ...db, teams, games, vegas, lines }, messages };
+  return { db: { ...db, teams, games, vegas, lines, idMap }, messages };
 }

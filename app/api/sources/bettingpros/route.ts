@@ -1,6 +1,6 @@
 import { readJson, respond, slatePayload, todayOr } from "../../../../lib/http";
 import { applyBettingProsProbe } from "../../../../lib/sources/apply-bettingpros";
-import { probeBettingPros } from "../../../../lib/sources/bettingpros";
+import { fetchBettingProsDay } from "../../../../lib/sources/bettingpros";
 import { updateDatabase } from "../../../../lib/store";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     const body = await readJson(request);
     const date = todayOr(body.date);
     const retrievedAt = new Date().toISOString();
-    const probe = await probeBettingPros(date);
+    const probe = await fetchBettingProsDay(date);
     return updateDatabase(async (db) => {
       const applied = applyBettingProsProbe(db, date, probe, retrievedAt);
       return {

@@ -8,12 +8,16 @@ npm test
 npm run dev
 ```
 
-Open the app, choose the date (it defaults to today in America/Chicago), and use **Load sample slate**. The sample is labeled development data for 2026–11–01 and 2026–10–31. It is the same importer as a real file. Loading it twice updates rows instead of duplicating them.
+Open the app. The date defaults to today in America/Chicago. If storage has no live game yet, the page loads that date from the public sources once. **Refresh games** loads the selected date again.
+
+Today's refresh drops sample rows and matches an exact normalized name on the same team. Sample player ids start with `player_` and sample game ids start with `game_`. A SportsLine name matches when, after accents and punctuation are removed, it equals one Basketball Reference player on that team. Two players with that same name are left off. A different suffix, such as Jr, stays a different name.
+
+Put `BETTINGPROS_API_KEY` in `.env.local` and restart the server when you want consensus lines. The same refresh then requests that day's events and lines. The first offers page has to parse before any further page is requested. The desk stops at 40 BettingPros calls.
 
 Then:
 
-1. **Run Model** on 2026-11-01 to save a pregame projection, line, odds, and timestamp.
-2. Change the date to 2026-10-31, **Run Model**, then **Import sample actuals** or **Update Results**.
+1. **Run Model** to save a pregame projection, line, odds, and timestamp.
+2. After the game, import actuals or press **Update Results**.
 3. Grades use the saved line. The projection does not move after actuals are stored.
 
 ## Environment
@@ -43,7 +47,7 @@ Research Slate calls the provider from the server. If the provider or key is mis
 
 Nothing is scheduled. Run Model, Update Results, imports, Research Slate, and the source buttons are manual.
 
-**Refresh public sources** reads Basketball Reference (season usage, season rebounds per minute, the prior 15 daily leader pages, and that date’s leaders), the SportsLine simulation table, and Hashtag defense vs position. It does not call BettingPros. SportsLine rows wait for an exact `source_id_map` entry. **Check BettingPros** reads `BETTINGPROS_API_KEY` and, when it is set, makes one `/events` call and one `/offers` page for market 156 and book 0, then stops. Rebounds and points-plus-rebounds markets are not requested, and extra offer pages are not requested.
+**Refresh games** reads Basketball Reference (season usage, season rebounds per minute, the prior 15 daily leader pages, and that date’s leaders), the SportsLine simulation table, and Hashtag defense vs position. It keeps SportsLine rows that match one Basketball Reference player by exact normalized name and team, and it removes sample rows. When `BETTINGPROS_API_KEY` is set, it also reads that day’s events and consensus lines for points (market 156), rebounds (157), and points plus rebounds (336), book 0. Paging starts only after the first offers page parses. **Check BettingPros** runs that same odds fetch on its own.
 
 ## Database
 
@@ -55,7 +59,7 @@ The app also refuses those pregame writes before they reach the database.
 
 Templates live in `templates/csv` and `templates/json`. The sample bundle is `data/sample/bundle.json`. Adapters are `csv` and `json`. JSON is an array of objects or `{ "rows": [ ... ] }`.
 
-Every statistical row needs `season` = `2026-27`. Other seasons are rejected. Prior-season columns such as `prior_season_ppg` are ignored. Player, team, and game links are ids. `source_player_id` counts only when `source_id_map` has that exact source and source id. Names are not matched.
+Every statistical row needs `season` = `2026-27`. Other seasons are rejected. Prior-season columns such as `prior_season_ppg` are ignored. Player, team, and game links in a file are ids. `source_player_id` counts only when `source_id_map` has that exact source and source id. File imports do not match names. The live refresh does: it drops sample rows and matches an exact normalized name on the same team.
 
 Kinds: `teams`, `players`, `games`, `id_map`, `projections`, `lines`, `player_rates`, `dvp`, `pace`, `opp_rebounds`, `vegas`, `actuals`.
 

@@ -37,7 +37,7 @@ A lower divisor moves the projection more. `10000` is the workbook’s way to tu
 
 2. **Points per 100 possessions stay a rate.** The sheet treated that column as a share of team points. The live minutes weight does not. It uses season usage percent from Basketball-Reference: `team points × minutes / 48 × USG% / 100`. A points-per-100 figure is not substituted for usage.
 
-3. **The prop line is not the forecast.** NumberFire’s approximate `XLOOKUP` is not used. Joins are exact ids through `source_id_map`. On the live slate the points line is only the last-15 weight and the minutes-share weight. Rebounds still do not subtract the line.
+3. **The prop line is not the forecast.** NumberFire’s approximate `XLOOKUP` is not used. File joins stay exact ids through `source_id_map`. The live refresh also accepts one exact normalized name on the same team. On the live slate the points line is only the last-15 weight and the minutes-share weight. Rebounds still do not subtract the line.
 
 4. **Missing inputs.** A text lookup used to turn the whole formula into `"no game"` or `"error"`, including a missing optional term. Optional adjustments are now flagged and skipped. The stat is blocked only when no numeric outside projection exists for it. Points + rebounds is blocked unless both stats project. Present sources other than NumberFire are averaged.
 
@@ -61,7 +61,7 @@ The points line is inside two weights only: last-15 points per game minus the li
 
 Rebounds subtract SportsLine TRB in the last-15 and minutes weights. They do not subtract the rebounds line. Points plus rebounds is still the sum. Edge is still projection minus the line.
 
-Players join on exact ids. A SportsLine name is stored only when `source_id_map` has that exact source id. Team abbreviations use a fixed alias list so BRK and BKN are the same team id.
+Today's refresh drops sample rows and matches an exact normalized name on the same team. Accents and punctuation are removed first, so Dončić matches Doncic, and a Jr suffix does not. Two players with that name on the team are not assigned. An existing source id still wins. Team abbreviations use a fixed alias list so BRK and BKN are the same team id.
 
 ## Trace
 

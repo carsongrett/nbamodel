@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Adjustment, Grade, Settings, SlateStat, SlateView, Stat } from "../lib/engine";
 
 type Payload = {
@@ -81,14 +81,56 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
     setPayload(body);
     if (body.slate) setSettings(body.slate.settings);
     if (!response.ok) setStatus(body.error || "The slate could not be loaded.");
-    else if (body.slate && body.slate.rows.length === 0) setStatus(`No ${nextDate} games in storage. Load the sample slate or import a 2026–27 file.`);
+    else if (body.slate && body.slate.rows.length === 0) setStatus(`No ${nextDate} players stored. Refresh games loads the public slate for that date.`);
     else setStatus(`Showing ${body.slate?.rows.length ?? 0} players for ${nextDate}.`);
   }
 
+  const liveLoadStarted = useRef(false);
+
   useEffect(() => {
-    void load(initialDate);
-    // The first paint uses the Chicago date from the server.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancel = false;
+    void (async () => {
+      const response = await fetch(`/api/slate?date=${initialDate}`);
+      const body = (await response.json()) as Payload;
+      if (cancel) return;
+      setPayload(body);
+      if (body.slate) setSettings(body.slate.settings);
+      const games = body.slate?.games ?? [];
+      const hasLive = games.some((game) => game.gameId.includes("|"));
+      if (!response.ok) {
+        setStatus(body.error || "The slate could not be loaded.");
+        return;
+      }
+      if (!hasLive && !liveLoadStarted.current) {
+        liveLoadStarted.current = true;
+        setBusy(true);
+        setStatus("Loading today's games…");
+        try {
+          const refresh = await fetch("/api/sources", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ date: initialDate }),
+          });
+          const refreshed = (await refresh.json()) as Payload;
+          if (cancel) return;
+          if (refreshed.slate) {
+            setPayload(refreshed);
+            setSettings(refreshed.slate.settings);
+          }
+          const errors = refreshed.messages?.filter((item) => item.level === "error") ?? [];
+          const lead = refreshed.error || refreshed.message || "Today's slate loaded.";
+          setStatus(errors.length ? `${lead} ${errors.length} item errors are listed below.` : lead);
+        } finally {
+          if (!cancel) setBusy(false);
+        }
+        return;
+      }
+      if (body.slate && body.slate.rows.length === 0) setStatus(`No ${initialDate} players stored. Refresh games loads the public slate for that date.`);
+      else setStatus(`Showing ${body.slate?.rows.length ?? 0} players for ${initialDate}.`);
+    })();
+    return () => {
+      cancel = true;
+    };
   }, [initialDate]);
 
   async function post(url: string, body: Record<string, unknown>, pending: string, method: "POST" | "PUT" = "POST") {
@@ -178,8 +220,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
           </select>
         </label>
         <button className="primary" type="button" disabled={busy} onClick={() => void post("/api/model", {}, "Running the model…")}>Run Model</button>
-        <button className="secondary" type="button" disabled={busy} onClick={() => void post("/api/sample", { part: "slate" }, "Loading the sample slate…")}>Load sample slate</button>
-        <button className="secondary" type="button" disabled={busy} onClick={() => void post("/api/sources", {}, "Refreshing public sources…")}>Refresh public sources</button>
+        <button className="secondary" type="button" disabled={busy} onClick={() => void post("/api/sources", {}, "Loading games…")}>Refresh games</button>
         <button className="ghost" type="button" disabled={busy} onClick={() => void post("/api/sources/bettingpros", {}, "Checking BettingPros…")}>Check BettingPros</button>
         <button className="ghost" type="button" disabled={busy} onClick={() => void post("/api/research", {}, "Requesting research…")}>Research Slate</button>
       </div>
@@ -214,7 +255,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       <div className="table-wrap">
         <table>
           <caption className="meta" style={{ captionSide: "bottom", padding: 10 }}>
-            Players match by id only. Grades use the saved pregame line. Pushes, DNPs, unresolved games, and no-picks are outside the win rate. {STATS.find((item) => item.id === stat)?.label}.
+            A player is listed when one published name matches that team. Grades use the saved pregame line. Pushes, DNPs, unresolved games, and no-picks are outside the win rate. {STATS.find((item) => item.id === stat)?.label}.
           </caption>
           <thead>
             <tr>
@@ -314,7 +355,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
               <input type="file" accept=".csv,.json,text/csv,application/json" onChange={(event) => void readFile(event.target.files?.[0], "actuals")} />
             </label>
             <button className="primary" type="button" disabled={busy} onClick={() => void post("/api/results", actualsText ? { text: actualsText, adapter: actualsAdapter } : {}, "Updating results…")}>Update Results</button>
-            <button className="secondary" type="button" disabled={busy} onClick={() => void post("/api/sample", { part: "actuals" }, "Importing sample actuals…")}>Import sample actuals</button>
           </div>
         </section>
 

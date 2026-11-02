@@ -14,6 +14,7 @@ import {
   type Position,
   type Team,
 } from "../engine";
+import { normalizePersonName } from "./names";
 import { pageIsCurrentSeason, parseBrefPlayers, parseHashtag, parseSportsLine, type BrefPlayerRow } from "./parsers";
 import { matchupGameId } from "./teams";
 
@@ -108,8 +109,37 @@ function foldRoster(rows: BrefPlayerRow[]): Map<string, Roster> {
   return map;
 }
 
+export function stripSample(db: Database): { db: Database; removed: number } {
+  const samplePlayer = (id: string) => id.startsWith("player_");
+  const sampleGame = (id: string) => id.startsWith("game_");
+  const players = db.players.filter((row) => !samplePlayer(row.playerId));
+  const games = db.games.filter((row) => !sampleGame(row.gameId));
+  const removed = (db.players.length - players.length) + (db.games.length - games.length);
+  return {
+    removed,
+    db: {
+      ...db,
+      players,
+      games,
+      projections: db.projections.filter((row) => !samplePlayer(row.playerId) && !sampleGame(row.gameId)),
+      lines: db.lines.filter((row) => !samplePlayer(row.playerId) && !sampleGame(row.gameId) && row.source !== "samplebook"),
+      rates: db.rates.filter((row) => !samplePlayer(row.playerId)),
+      actuals: db.actuals.filter((row) => !samplePlayer(row.playerId) && !sampleGame(row.gameId)),
+      pregame: db.pregame.filter((row) => !samplePlayer(row.playerId) && !sampleGame(row.gameId)),
+      overrides: db.overrides.filter((row) => !samplePlayer(row.playerId) && !sampleGame(row.gameId)),
+      idMap: db.idMap.filter((row) => !samplePlayer(row.canonicalId)),
+      research: db.research.filter((row) => row.playerId == null || !samplePlayer(row.playerId)),
+    },
+  };
+}
+
 export function applyPublicPages(db: Database, slateDate: string, fetched: PublicFetch): { db: Database; messages: ModelMessage[] } {
+  const stripped = stripSample(db);
+  db = stripped.db;
   const messages: ModelMessage[] = [];
+  if (stripped.removed > 0) {
+    messages.push({ level: "info", playerId: null, message: `Removed ${stripped.removed} sample players and games.` });
+  }
   let teams = db.teams.slice();
   let players = db.players.slice();
   let games = db.games.slice();
@@ -161,29 +191,8 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
       roster.set(id, prior ? { ...prior, ...Object.fromEntries(Object.entries(row).filter(([, value]) => value != null)) } as Roster : row);
     }
   }
-  let rosterCount = 0;
-  for (const row of roster.values()) {
-    if (!row.team || !row.position) continue;
-    ensureTeam(row.team);
-    const player: Player = {
-      playerId: row.playerId,
-      displayName: row.name,
-      teamId: row.team,
-      position: row.position,
-      season: CURRENT_SEASON,
-    };
-    players = upsertByKey(players, [player], (item) => item.playerId).rows;
-    remember(row.playerId);
-    rosterCount++;
-    if (row.usgPct != null) writeRate(row.playerId, { usgPct: row.usgPct, usgGames: row.usgGames ?? row.games });
-    if (row.trbPerGame != null && row.mpPerGame != null && row.mpPerGame > 0) {
-      writeRate(row.playerId, {
-        rebPerMinute: row.trbPerGame / row.mpPerGame,
-        rebPerMinuteGames: row.games,
-      });
-    }
-  }
-  messages.push({ level: "info", playerId: null, message: `Basketball Reference roster rows stored: ${rosterCount}.` });
+  const readyRoster = [...roster.values()].filter((row) => row.team && row.position);
+  messages.push({ level: "info", playerId: null, message: `Basketball Reference roster read: ${readyRoster.length}. Today's board keeps SportsLine matches only.` });
 
   const recent = new Map<string, { points: number; rebounds: number; games: number }>();
   let recentDays = 0;
@@ -203,17 +212,86 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
       recent.set(row.playerId, bucket);
     }
   }
-  let recentWritten = 0;
-  for (const [playerId, bucket] of recent) {
-    if (!players.some((player) => player.playerId === playerId)) continue;
-    writeRate(playerId, {
-      recentPointsPerGame: bucket.points / bucket.games,
-      recentReboundsPerGame: bucket.rebounds / bucket.games,
-      recentGames: bucket.games,
-    });
-    recentWritten++;
+  messages.push({ level: "info", playerId: null, message: `Last 15 days: ${recentDays} leader pages.` });
+
+  if (!fetched.sportsline.ok) {
+    messages.push({ level: "error", playerId: null, message: `SportsLine failed: ${fetched.sportsline.error}` });
+  } else {
+    const parsed = parseSportsLine(fetched.sportsline.html);
+    let stored = 0;
+    const unmatched: string[] = [];
+    for (const row of parsed) {
+      if (!row.team || !row.away || !row.home) {
+        unmatched.push(row.player);
+        continue;
+      }
+      const mapped = idMap.find((item) => item.source === SPORTSLINE && item.entityType === "player" && item.sourceId === row.player);
+      const named = readyRoster.filter((player) => player.team === row.team && normalizePersonName(player.name) === normalizePersonName(row.player));
+      const rosterRow = mapped ? roster.get(mapped.canonicalId) ?? null : named.length === 1 ? named[0] : null;
+      if (!rosterRow || !rosterRow.team || !rosterRow.position) {
+        unmatched.push(row.player);
+        continue;
+      }
+      ensureTeam(rosterRow.team);
+      const player: Player = {
+        playerId: rosterRow.playerId,
+        displayName: rosterRow.name,
+        teamId: rosterRow.team,
+        position: rosterRow.position,
+        season: CURRENT_SEASON,
+      };
+      players = upsertByKey(players, [player], (item) => item.playerId).rows;
+      remember(rosterRow.playerId);
+      idMap = upsertByKey(
+        idMap,
+        [{ source: SPORTSLINE, entityType: "player" as const, sourceId: row.player, canonicalId: rosterRow.playerId }],
+        (item) => `${item.source}|${item.entityType}|${item.sourceId}`,
+      ).rows;
+      if (rosterRow.usgPct != null) writeRate(rosterRow.playerId, { usgPct: rosterRow.usgPct, usgGames: rosterRow.usgGames ?? rosterRow.games });
+      if (rosterRow.trbPerGame != null && rosterRow.mpPerGame != null && rosterRow.mpPerGame > 0) {
+        writeRate(rosterRow.playerId, { rebPerMinute: rosterRow.trbPerGame / rosterRow.mpPerGame, rebPerMinuteGames: rosterRow.games });
+      }
+      const bucket = recent.get(rosterRow.playerId);
+      if (bucket && bucket.games > 0) {
+        writeRate(rosterRow.playerId, {
+          recentPointsPerGame: bucket.points / bucket.games,
+          recentReboundsPerGame: bucket.rebounds / bucket.games,
+          recentGames: bucket.games,
+        });
+      }
+      ensureTeam(row.away);
+      ensureTeam(row.home);
+      const gameId = matchupGameId(slateDate, row.away, row.home);
+      ensureGame({
+        gameId,
+        season: CURRENT_SEASON,
+        gameDate: slateDate,
+        homeTeamId: row.home,
+        awayTeamId: row.away,
+        status: "scheduled",
+      });
+      const projection: OutsideProjection = {
+        playerId: rosterRow.playerId,
+        gameId,
+        source: SPORTSLINE,
+        season: CURRENT_SEASON,
+        points: row.points,
+        rebounds: row.rebounds,
+        minutes: row.minutes,
+        sourceTimestamp: fetched.retrievedAt,
+      };
+      projections = upsertByKey(projections, [projection], (item) => `${item.playerId}|${item.gameId}|${item.source}`).rows;
+      stored++;
+    }
+    messages.push({ level: "info", playerId: null, message: `SportsLine projections stored: ${stored}. Rows use ${slateDate}.` });
+    if (unmatched.length) {
+      messages.push({
+        level: "info",
+        playerId: null,
+        message: `SportsLine names with no single Basketball Reference match on that team: ${unmatched.length}. ${unmatched.slice(0, 8).join(", ")}.`,
+      });
+    }
   }
-  messages.push({ level: "info", playerId: null, message: `Last 15 days: ${recentDays} leader pages, ${recentWritten} player rates.` });
 
   if (!fetched.actuals.ok) {
     messages.push({ level: "error", playerId: null, message: `Daily leaders for ${slateDate} failed: ${fetched.actuals.error}` });
@@ -278,57 +356,6 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
     }
     dvp = upsertByKey(dvp, incoming, (row) => `${row.teamId}|${row.position}`).rows;
     messages.push({ level: "info", playerId: null, message: `Hashtag defense vs position rows stored: ${incoming.length}.` });
-  }
-
-  if (!fetched.sportsline.ok) {
-    messages.push({ level: "error", playerId: null, message: `SportsLine failed: ${fetched.sportsline.error}` });
-  } else {
-    const parsed = parseSportsLine(fetched.sportsline.html);
-    let stored = 0;
-    const unmapped: string[] = [];
-    for (const row of parsed) {
-      if (!row.team || !row.away || !row.home) {
-        unmapped.push(row.player);
-        continue;
-      }
-      const mapped = idMap.find((item) => item.source === SPORTSLINE && item.entityType === "player" && item.sourceId === row.player);
-      if (!mapped) {
-        unmapped.push(row.player);
-        continue;
-      }
-      ensureTeam(row.away);
-      ensureTeam(row.home);
-      const gameId = matchupGameId(slateDate, row.away, row.home);
-      ensureGame({
-        gameId,
-        season: CURRENT_SEASON,
-        gameDate: slateDate,
-        homeTeamId: row.home,
-        awayTeamId: row.away,
-        status: "scheduled",
-      });
-      const projection: OutsideProjection = {
-        playerId: mapped.canonicalId,
-        gameId,
-        source: SPORTSLINE,
-        season: CURRENT_SEASON,
-        points: row.points,
-        rebounds: row.rebounds,
-        minutes: row.minutes,
-        sourceTimestamp: fetched.retrievedAt,
-      };
-      projections = upsertByKey(projections, [projection], (item) => `${item.playerId}|${item.gameId}|${item.source}`).rows;
-      stored++;
-    }
-    messages.push({ level: "info", playerId: null, message: `SportsLine projections stored: ${stored}. The page has no game date; rows use ${slateDate}.` });
-    if (unmapped.length) {
-      const sample = unmapped.slice(0, 8).join(", ");
-      messages.push({
-        level: "info",
-        playerId: null,
-        message: `SportsLine rows without an exact source_id_map entry: ${unmapped.length}. ${sample}. Names were not matched.`,
-      });
-    }
   }
 
   return {
