@@ -227,9 +227,9 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
 
       <section className="status" aria-live="polite">
         <p>{status}</p>
-        {payload?.messages?.length ? (
+        {payload?.messages?.some((item) => item.level === "error") ? (
           <ul>
-            {payload.messages.map((item, index) => (
+            {payload.messages.filter((item) => item.level === "error").map((item, index) => (
               <li key={`${item.message}-${index}`} className={item.level}>{item.message}</li>
             ))}
           </ul>
@@ -326,10 +326,11 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                     <div className={`grade ${cell.grade}`}>{gradeLabel(cell.grade)}</div>
                     <div className="meta">{cell.actual == null ? "" : `Actual ${fmt(cell.actual, 1)}`}</div>
                     <div className="meta">{cell.error == null ? "" : `Error ${fmt(cell.error)}`}</div>
-                    <div className="flags">
-                      {cell.blockReason ? <span className="flag">{cell.blockReason}</span> : null}
-                      {cell.flags.slice(0, 4).map((flag) => <span className="flag" key={flag}>{flag}</span>)}
-                    </div>
+                    {cell.blockReason ? (
+                      <div className="flags">
+                        <span className="flag">{cell.blockReason}</span>
+                      </div>
+                    ) : null}
                   </td>
                 </tr>
               );
