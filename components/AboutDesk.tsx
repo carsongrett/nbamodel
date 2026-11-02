@@ -10,40 +10,54 @@ const SOURCES = [
 ];
 
 const POINTS = [
-  { site: "SportsLine", piece: "Points", how: "", tone: "accent" },
-  { site: "Hashtag", piece: "Defense", how: "÷ 2", tone: "warn" },
-  { site: "Reference − line", piece: "Last 15", how: "÷ 10", tone: "info" },
-  { site: "Share − line", piece: "Minutes share", how: "÷ 3", tone: "good" },
+  { site: "SportsLine", piece: "Points", how: "", tone: "accent", example: "SportsLine points are 22.00. That number is the start." },
+  { site: "Hashtag", piece: "Defense", how: "÷ 2", tone: "warn", example: "This defense allows 1.00 more points than the position average. 1.00 / 2 = +0.50." },
+  { site: "Reference − line", piece: "Last 15", how: "÷ 10", tone: "info", example: "Last 15 games: 24.00 points per game. The line is 21.00. (24.00 − 21.00) / 10 = +0.30." },
+  { site: "Share − line", piece: "Minutes share", how: "÷ 3", tone: "good", example: "120 team points × 36 / 48 × 25 / 100 = 22.50. (22.50 − 21.00 line) / 3 = +0.50." },
+  { site: "Result", piece: "Projection", how: "", tone: "ink", example: "22.00 + 0.50 + 0.30 + 0.50 = 23.30 points." },
 ];
 
 const REBOUNDS = [
-  { site: "SportsLine", piece: "Rebounds", how: "", tone: "accent" },
-  { site: "Hashtag", piece: "Defense", how: "÷ 2", tone: "warn" },
-  { site: "Reference − SportsLine", piece: "Last 15", how: "÷ 10", tone: "info" },
-  { site: "Reference − SportsLine", piece: "Per minute", how: "÷ 2", tone: "info" },
+  { site: "SportsLine", piece: "Rebounds", how: "", tone: "accent", example: "SportsLine rebounds are 8.00. That number is the start." },
+  { site: "Hashtag", piece: "Defense", how: "÷ 2", tone: "warn", example: "This defense allows 1.00 more rebounds than the position average. 1.00 / 2 = +0.50." },
+  { site: "Reference − SportsLine", piece: "Last 15", how: "÷ 10", tone: "info", example: "Last 15 games: 9.00 rebounds per game. SportsLine is 8.00. (9.00 − 8.00) / 10 = +0.10." },
+  { site: "Reference − SportsLine", piece: "Per minute", how: "÷ 2", tone: "info", example: "0.25 rebounds per minute × 36 minutes = 9.00. (9.00 − 8.00 SportsLine) / 2 = +0.50." },
+  { site: "Result", piece: "Projection", how: "", tone: "ink", example: "8.00 + 0.50 + 0.10 + 0.50 = 9.10 rebounds." },
 ];
 
-function Flow({ title, steps }: { title: string; steps: { site: string; piece: string; how: string; tone: string }[] }) {
+const FINISH = [
+  { op: "", site: "Points", piece: "Projection", tone: "ink", example: "The points projection above is 23.30." },
+  { op: "+", site: "Rebounds", piece: "Projection", tone: "ink", example: "The rebounds projection above is 9.10." },
+  { op: "=", site: "Together", piece: "Points + rebounds", tone: "ink", example: "23.30 + 9.10 = 32.40." },
+  { op: "−", site: "BettingPros", piece: "Line", tone: "good", example: "The points-plus-rebounds line is 31.50." },
+  { op: "=", site: "Pick", piece: "Edge", tone: "ink", example: "32.40 − 31.50 = +0.90, so the pick is the over." },
+];
+
+function ExampleBox({ tone, site, piece, how, example }: { tone: string; site: string; piece: string; how?: string; example: string }) {
+  return (
+    <details className="math-tip">
+      <summary className={`math-box tone-${tone}`}>
+        <span className="site">{site}</span>
+        <b>{piece}</b>
+        {how != null ? <span className="how">{how}</span> : null}
+      </summary>
+      <p className="math-example">{example}</p>
+    </details>
+  );
+}
+
+function Flow({ title, steps }: { title: string; steps: { site: string; piece: string; how: string; tone: string; example: string }[] }) {
   return (
     <section className="about-block">
       <h3>{title}</h3>
       <div className="math">
         {steps.map((step, index) => (
           <div className="math-piece" key={`${title}-${step.piece}`}>
-            {index > 0 ? <span className="math-op">+</span> : null}
-            <div className={`math-box tone-${step.tone}`}>
-              <span className="site">{step.site}</span>
-              <b>{step.piece}</b>
-              {step.how ? <span className="how">{step.how}</span> : <span className="how" />}
-            </div>
+            {index > 0 && index < steps.length - 1 ? <span className="math-op">+</span> : null}
+            {index === steps.length - 1 ? <span className="math-op">=</span> : null}
+            <ExampleBox tone={step.tone} site={step.site} piece={step.piece} how={step.how} example={step.example} />
           </div>
         ))}
-        <span className="math-op">=</span>
-        <div className="math-box tone-ink">
-          <span className="site">Result</span>
-          <b>Projection</b>
-          <span className="how" />
-        </div>
       </div>
     </section>
   );
@@ -78,19 +92,17 @@ export default function AboutDesk({ onClose }: { onClose: () => void }) {
           ))}
         </div>
 
+        <p className="sub">Click a box. One sample player runs through every step.</p>
         <Flow title="Points" steps={POINTS} />
         <Flow title="Rebounds" steps={REBOUNDS} />
 
         <div className="math finish">
-          <div className="math-box tone-ink"><span className="site">Points</span><b>Projection</b></div>
-          <span className="math-op">+</span>
-          <div className="math-box tone-ink"><span className="site">Rebounds</span><b>Projection</b></div>
-          <span className="math-op">=</span>
-          <div className="math-box tone-ink"><span className="site">Together</span><b>Points + rebounds</b></div>
-          <span className="math-op">−</span>
-          <div className="math-box tone-good"><span className="site">BettingPros</span><b>Line</b></div>
-          <span className="math-op">=</span>
-          <div className="math-box tone-ink"><span className="site">Pick</span><b>Edge</b></div>
+          {FINISH.map((step) => (
+            <div className="math-piece" key={`${step.site}-${step.piece}`}>
+              {step.op ? <span className="math-op">{step.op}</span> : null}
+              <ExampleBox tone={step.tone} site={step.site} piece={step.piece} example={step.example} />
+            </div>
+          ))}
         </div>
 
         <div className="unused">
