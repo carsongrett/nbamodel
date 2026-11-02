@@ -11,6 +11,7 @@ import {
   emptyDatabase,
   gradeResult,
   idsEqual,
+  favoredTeamPoints,
   impliedTeamPoints,
   importBundle,
   importRecords,
@@ -65,6 +66,8 @@ test("implied team points uses half the signed spread", () => {
   assert.equal(impliedTeamPoints(220, 0), 110);
   const workbookFavorite = 230.5 / 2 + Math.abs(-13.5);
   assert.notEqual(impliedTeamPoints(230.5, -13.5), workbookFavorite);
+  assert.equal(favoredTeamPoints(230.5, -13.5), workbookFavorite);
+  assert.equal(favoredTeamPoints(230.5, 13.5), 230.5 / 2 - 13.5);
 });
 
 test("points per 100 possessions are not a share of team points", () => {
@@ -73,37 +76,42 @@ test("points per 100 possessions are not a share of team points", () => {
     ptsPer100: 36.5,
     ptsPer100Games: 10,
     projectedMinutes: 48,
-    gamePace: 100,
+    teamPoints: 120,
+    line: 36.5,
     recentPerGame: 36.5,
     recentGames: 5,
     dvpDiff: 0,
-    paceDiff: 0,
   });
   const minutes = projection.adjustments.find((a) => a.key === "minutes");
-  assert.equal(minutes?.status, "applied");
-  assert.equal(minutes?.delta, 0);
-  assert.match(minutes?.detail ?? "", /Team points are not used/);
-  const teamPointShare = 120 * (36.5 / 100) * (48 / 48);
-  assert.notEqual(teamPointShare, 36.5);
+  assert.equal(minutes?.status, "skipped");
+  assert.match(minutes?.reason ?? "", /not used as a share of team points/);
 });
 
-test("a mis-scaled per-100 rate is skipped instead of applied", () => {
-  const projection = basePoints({ ptsPer100: 0.34 });
+test("a mis-scaled usage rate is skipped instead of applied", () => {
+  const projection = basePoints({ usgPct: 0.34, usgGames: 10, teamPoints: 110, line: 20 });
   const minutes = projection.adjustments.find((a) => a.key === "minutes");
   assert.equal(minutes?.status, "skipped");
   assert.match(minutes?.reason ?? "", /mis-scaled/);
   assert.equal(projection.status, "ok");
 });
 
-test("forecasts ignore the prop line", () => {
-  const low = basePoints({ line: 10 });
+test("the points line is only the last-15 and minutes-share weight", () => {
+  const low = basePoints({ line: 20 });
   const high = basePoints({ line: 40 });
-  assert.equal(low.projection, high.projection);
-  assert.deepEqual(low.adjustments.map((a) => a.delta), high.adjustments.map((a) => a.delta));
+  assert.notEqual(low.projection, high.projection);
   const recent = low.adjustments.find((a) => a.key === "recent");
-  assert.match(recent?.detail ?? "", /prop line is not used/);
-  const baseline = average([30, 32, 31]) as number;
-  assert.equal(recent?.delta, (33 - baseline) / 10);
+  assert.equal(recent?.delta, (33 - 20) / 10);
+  const weighted = basePoints({
+    line: 20,
+    usgPct: 20,
+    usgGames: 10,
+    teamPoints: 110,
+    projectedMinutes: 36,
+    sources: [{ source: "sportsline", value: 28 }],
+  });
+  const share = 110 * (36 / 48) * (20 / 100);
+  assert.equal(weighted.adjustments.find((a) => a.key === "minutes")?.delta, (share - 20) / 3);
+  assert.equal(basePoints({ paceDiff: 5 }).adjustments.find((a) => a.key === "pace")?.status, "skipped");
 });
 
 test("missing optional adjustments are skipped and a missing baseline blocks", () => {
@@ -123,16 +131,17 @@ test("missing optional adjustments are skipped and a missing baseline blocks", (
   assert.equal(blocked.adjustments.length, 0);
 });
 
-test("partial outside sources are averaged", () => {
+test("partial outside sources are averaged and numberfire is ignored", () => {
   const projection = basePoints({
     sources: [
       { source: "sportsline", value: 20 },
-      { source: "other", value: null },
-      { source: "numberfire", value: 30 },
+      { source: "other", value: 30 },
+      { source: "numberfire", value: 99 },
     ],
   });
   assert.equal(projection.baseline, 25);
-  assert.deepEqual(projection.sourcesUsed, ["sportsline", "numberfire"]);
+  assert.deepEqual(projection.sourcesUsed, ["sportsline", "other"]);
+  assert.match(projection.flags.join(" "), /NumberFire/);
 });
 
 test("insufficient recent sample is skipped and not replaced", () => {

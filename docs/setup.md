@@ -28,6 +28,7 @@ Copy `.env.example` to `.env.local`. Leave it blank for local use.
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only storage key |
 | `OWNER_EMAIL` | The only email allowed to sign in |
 | `LOCAL_STORE_PATH` | Optional override for `data/local-store.json` |
+| `BETTINGPROS_API_KEY` | Server-only BettingPros key. Header `x-api-key`. Absent means no odds call |
 | `RESEARCH_PROVIDER` | `openai`, or blank |
 | `RESEARCH_API_KEY` | Server-only research key |
 | `RESEARCH_API_BASE_URL` | Defaults to `https://api.openai.com/v1` |
@@ -40,7 +41,9 @@ Storage uses Supabase only when the URL and service role key are set. Otherwise 
 
 Research Slate calls the provider from the server. If the provider or key is missing, or the provider name is not `openai`, the button returns a setup-needed message and stores nothing. It does not invent injuries. Web pages are passed to the model as untrusted data. Suggested minutes stay as a review item until you press **Apply suggested minutes**, which writes an override only. Run Model after that if you want the override in the saved projection.
 
-Nothing is scheduled. Run Model, Update Results, imports, and Research Slate are manual.
+Nothing is scheduled. Run Model, Update Results, imports, Research Slate, and the source buttons are manual.
+
+**Refresh public sources** reads Basketball Reference (season usage, season rebounds per minute, the prior 15 daily leader pages, and that date’s leaders), the SportsLine simulation table, and Hashtag defense vs position. It does not call BettingPros. SportsLine rows wait for an exact `source_id_map` entry. **Check BettingPros** reads `BETTINGPROS_API_KEY` and, when it is set, makes one `/events` call and one `/offers` page for market 156 and book 0, then stops. Rebounds and points-plus-rebounds markets are not requested, and extra offer pages are not requested.
 
 ## Database
 
@@ -58,7 +61,8 @@ Kinds: `teams`, `players`, `games`, `id_map`, `projections`, `lines`, `player_ra
 
 Units that matter:
 
-- `pts_per_100` is points per 100 possessions, not a percentage of team points.
+- `pts_per_100` is points per 100 possessions, not a percentage of team points. The minutes weight uses `usg_pct` instead.
+- `usg_pct` is Basketball-Reference season usage in percent. `28.4` means 28.4 percent.
 - `reb_per_minute` is rebounds per minute. `trb_per_36` and `recent_reb_per_minute` together are blended 50/50 into that rate.
 - `pace` is possessions per 48 minutes. `pace_diff` is the opponent’s possessions-versus-league figure used as its own adjustment.
 - `spread` is the signed team spread. Negative means that team is favored.

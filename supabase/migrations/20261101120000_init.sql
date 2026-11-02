@@ -62,6 +62,8 @@ create table player_rates (
   season text not null check (season = '2026-27'),
   pts_per_100 numeric,
   pts_per_100_games integer,
+  usg_pct numeric,
+  usg_games integer,
   reb_per_minute numeric,
   reb_per_minute_games integer,
   recent_points_per_game numeric,

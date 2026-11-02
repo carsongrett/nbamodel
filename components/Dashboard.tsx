@@ -10,6 +10,8 @@ type Payload = {
   storageMessage?: string;
   researchState?: "ready" | "setup_needed";
   researchMessage?: string;
+  bettingProsState?: "ready" | "setup_needed";
+  bettingProsMessage?: string;
   message?: string;
   messages?: { level: "error" | "info"; playerId: string | null; message: string }[];
   slate?: SlateView;
@@ -135,7 +137,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
         <div>
           <p className="eyebrow">2026–27 season</p>
           <h1>Player prop desk</h1>
-          <p className="sub">Points, rebounds, and points plus rebounds. Projections are averaged from imported sources, then adjusted. The prop line is not an input.</p>
+          <p className="sub">Points, rebounds, and points plus rebounds. SportsLine is the outside projection. The points line is only a weight on last-15 and the minutes share.</p>
         </div>
         {authConfigured ? (
           <button className="ghost" type="button" onClick={() => void fetch("/api/auth/logout", { method: "POST" }).then(() => { window.location.href = "/login"; })}>Sign out</button>
@@ -146,6 +148,8 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
         <strong>{payload?.storageMode === "supabase" ? "Supabase" : "Local storage"}.</strong> {payload?.storageMessage}
         <br />
         <strong>{payload?.researchState === "ready" ? "Research ready." : "Research setup needed."}</strong> {payload?.researchMessage}
+        <br />
+        <strong>{payload?.bettingProsState === "ready" ? "BettingPros key set." : "BettingPros setup needed."}</strong> {payload?.bettingProsMessage}
       </div>
 
       <div className="row actions">
@@ -175,6 +179,8 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
         </label>
         <button className="primary" type="button" disabled={busy} onClick={() => void post("/api/model", {}, "Running the model…")}>Run Model</button>
         <button className="secondary" type="button" disabled={busy} onClick={() => void post("/api/sample", { part: "slate" }, "Loading the sample slate…")}>Load sample slate</button>
+        <button className="secondary" type="button" disabled={busy} onClick={() => void post("/api/sources", {}, "Refreshing public sources…")}>Refresh public sources</button>
+        <button className="ghost" type="button" disabled={busy} onClick={() => void post("/api/sources/bettingpros", {}, "Checking BettingPros…")}>Check BettingPros</button>
         <button className="ghost" type="button" disabled={busy} onClick={() => void post("/api/research", {}, "Requesting research…")}>Research Slate</button>
       </div>
 

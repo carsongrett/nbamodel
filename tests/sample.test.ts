@@ -35,7 +35,7 @@ test("sample slate imports once, reloads without new rows, and keeps ids exact",
   assert.ok(second.results.reduce((sum, result) => sum + result.updated, 0) > 0);
 });
 
-test("sample projections ignore the line and flag the workbook cases", () => {
+test("sample projections use the points line only as a weight", () => {
   const db = importBundle(emptyDatabase(), load("slate")).db;
   const before = buildSlate(db, "2026-11-01");
   const luka = before.rows.find((row) => row.playerId === "player_luka");
@@ -47,11 +47,11 @@ test("sample projections ignore the line and flag the workbook cases", () => {
     lines: db.lines.map((line) => line.playerId === "player_luka" && line.stat === "points" ? { ...line, line: line.line + 10 } : line),
   }, "2026-11-01");
   const lukaAgain = changed.rows.find((row) => row.playerId === "player_luka");
-  assert.equal(lukaAgain?.stats.points.projection, luka.stats.points.projection);
+  assert.notEqual(lukaAgain?.stats.points.projection, luka.stats.points.projection);
   assert.notEqual(lukaAgain?.stats.points.edge, luka.stats.points.edge);
   const minutes = luka.stats.points.adjustments.find((item) => item.key === "minutes");
-  assert.equal(minutes?.status, "applied");
-  assert.match(minutes?.detail ?? "", /Team points are not used/);
+  assert.equal(minutes?.status, "skipped");
+  assert.match(minutes?.reason ?? "", /usage percent is missing/);
 
   const kyrie = before.rows.find((row) => row.playerId === "player_kyrie");
   assert.equal(kyrie?.stats.points.adjustments.find((item) => item.key === "minutes")?.status, "skipped");

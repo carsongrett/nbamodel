@@ -153,6 +153,8 @@ class SupabaseStore implements Store {
         season: String(row.season),
         ptsPer100: num(row.pts_per_100),
         ptsPer100Games: num(row.pts_per_100_games),
+        usgPct: num(row.usg_pct),
+        usgGames: num(row.usg_games),
         rebPerMinute: num(row.reb_per_minute),
         rebPerMinuteGames: num(row.reb_per_minute_games),
         recentPointsPerGame: num(row.recent_points_per_game),
@@ -270,6 +272,7 @@ class SupabaseStore implements Store {
     })), ["player_id", "game_id", "stat"]);
     await this.replace("player_rates", db.rates.map((row: PlayerRate) => ({
       player_id: row.playerId, season: row.season, pts_per_100: row.ptsPer100, pts_per_100_games: row.ptsPer100Games,
+      usg_pct: row.usgPct ?? null, usg_games: row.usgGames ?? null,
       reb_per_minute: row.rebPerMinute, reb_per_minute_games: row.rebPerMinuteGames,
       recent_points_per_game: row.recentPointsPerGame, recent_rebounds_per_game: row.recentReboundsPerGame,
       recent_games: row.recentGames, source_timestamp: row.sourceTimestamp,

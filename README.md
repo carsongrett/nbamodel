@@ -2,7 +2,7 @@
 
 Personal NBA prop desk for 2026–27 points, rebounds, and points plus rebounds.
 
-Projections average imported outside numbers, then apply defense, pace, recent form, minutes, and opponent-rebound adjustments. The sportsbook line is not part of the forecast. Login is a single owner. There is no sign-up, no scheduled run, and no betting automation.
+Projections start from SportsLine, then apply defense versus position, last-15 form, and a minutes share. The points line is only a weight in those last two points terms. Login is a single owner. There is no sign-up, no scheduled run, and no betting automation.
 
 ```bash
 npm install

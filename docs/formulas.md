@@ -33,23 +33,35 @@ A lower divisor moves the projection more. `10000` is the workbook’s way to tu
 
 ## Changes from the workbook
 
-1. **Implied team points.** The sheet used `total/2 + spread` for a favorite and `total/2 − spread` for a dog, which adds or subtracts the whole spread. Milwaukee −13.5 on a 230.5 total became 128.75 there. The corrected value is `(game total − signed team spread) / 2` = 122, and the dog is 108.5. This number is shown as game context. It is not multiplied into the player projection.
+1. **Implied team points.** The sheet used `total/2 + spread` for a favorite and `total/2 − spread` for a dog, which adds or subtracts the whole spread. Milwaukee −13.5 on a 230.5 total became 128.75 there. The half-spread value is `(game total − signed team spread) / 2` = 122, and the dog is 108.5. That half-spread number stays on the trace as context. The minutes weight uses the sheet's team-points figure, 128.75 for that favorite.
 
-2. **Points per 100 possessions.** The sheet labeled `player pts %` is “per 100 poss” (Luka 34.2, not a percent of team scoring) and then did `team_points * (value / 100) * (minutes / 48)`. That treats a per-possession rate as a share of team points. The minutes term is now `points_per_100 * possessions / 100`, where possessions are `pace_per_48 * minutes / 48`. Pace is the average of the two teams’ possessions per 48 minutes. If one team is missing, that team’s pace is used and flagged. If pace is missing, the term is skipped. Team points are not a substitute. A value at or below 1.5, or above 80, is flagged as mis-scaled and skipped.
+2. **Points per 100 possessions stay a rate.** The sheet treated that column as a share of team points. The live minutes weight does not. It uses season usage percent from Basketball-Reference: `team points × minutes / 48 × USG% / 100`. A points-per-100 figure is not substituted for usage.
 
-3. **The prop line is not in the forecast.** Points used `(recent − line)` and `(minutes expectation − line)`. Rebounds already compared recent production and the minute rate with the average of the outside projections, despite a “vs line” label. Both stats now use `(input − baseline) / strength`. Changing the line changes the edge only. NumberFire’s `XLOOKUP` match mode `1` (next larger item, an approximate name match) is not used. Joins are exact player, team, and game ids. A source id resolves only through `source_id_map`.
+3. **The prop line is not the forecast.** NumberFire’s approximate `XLOOKUP` is not used. Joins are exact ids through `source_id_map`. On the live slate the points line is only the last-15 weight and the minutes-share weight. Rebounds still do not subtract the line.
 
-4. **Missing inputs.** A text lookup used to turn the whole formula into `"no game"` or `"error"`, including a missing optional term. Optional adjustments are now flagged and skipped. The stat is blocked only when no numeric outside projection exists for it. Points + rebounds is blocked unless both stats project. Present sources are averaged; the workbook required all three cells to be numeric.
+4. **Missing inputs.** A text lookup used to turn the whole formula into `"no game"` or `"error"`, including a missing optional term. Optional adjustments are now flagged and skipped. The stat is blocked only when no numeric outside projection exists for it. Points + rebounds is blocked unless both stats project. Present sources other than NumberFire are averaged.
 
-5. **Rebounds pace divisor.** `/ 7.5` was hardcoded. It is the setting `paceReboundsStrength`, still defaulting to 7.5.
+5. **Pace and opponent rebounds.** Those workbook terms are not applied. The old divisors remain in settings and are unused.
 
-6. **Minutes sources.** The sheet averaged SportsLine and the other sheet only. This app averages every imported minute for that player and game. A player-game override replaces that average. NumberFire minutes are included when imported.
+6. **Minutes sources.** Minutes are the average of imported minute values for that player and game, except NumberFire. A player-game override replaces that average.
 
 7. **Short samples.** The sheet used whatever recent or rate cell was present. Recent windows below `minRecentGames` (default 3) and rate samples below `minRateGames` (default 5), or a missing sample size, skip that adjustment. Prior-season columns are rejected or ignored. They are never copied into a current-season hole.
 
 8. **Grading.** The sheet graded a win when the projection and the actual finished on the same side of the line, and it fell through to Push when the projection equaled the line. A projection equal to the line is now **no pick**. Actual equal to the line is still a push. DNPs and games that are not final, or final games missing a stat, are flagged separately and are not wins, losses, or voids. No sportsbook void rule is applied. Rows 67–72 only counted results whose edge cleared 4, 1, or 3 points. That filter is not carried forward. Win rate is wins / (wins + losses). Mean absolute error is the average of `|actual − saved projection|`, excluding DNPs and unresolved games.
 
 Pregame projection, line, odds, and timestamp are whatever Run Model last saved. Update Results and a later Run Model do not replace them after actuals exist. If no pregame row was saved, a postgame number is not invented.
+
+## Live slate
+
+The desk now runs on the published pages, not the three-source workbook average.
+
+SportsLine PTS, MIN, and TRB are the outside projection. The PROJ column is ignored. NumberFire is ignored. Pace and opponent rebounds are not applied. Hashtag publishes points and rebounds allowed by team and position; the adjustment is that number minus the position average, divided by the DvP strength.
+
+The points line is inside two weights only: last-15 points per game minus the line, divided by 10, and team points times minutes/48 times usage/100, minus the line, divided by 3. Usage is Basketball-Reference season USG%, not points per 100 possessions. Team points in that weight are half the total plus the spread when the team is favored and minus it when not. A negative spread is the favorite. The half-spread figure stays on the trace as context and is not the minutes input.
+
+Rebounds subtract SportsLine TRB in the last-15 and minutes weights. They do not subtract the rebounds line. Points plus rebounds is still the sum. Edge is still projection minus the line.
+
+Players join on exact ids. A SportsLine name is stored only when `source_id_map` has that exact source id. Team abbreviations use a fixed alias list so BRK and BKN are the same team id.
 
 ## Trace
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { buildSlate, chicagoToday, type Database } from "./engine";
 import { researchAvailability } from "./research";
+import { bettingProsAvailability } from "./sources/bettingpros";
 import { getStore, storageMessage } from "./store";
 
 export class HttpError extends Error {
@@ -18,12 +19,15 @@ export function fail(message: string, status = 400): never {
 export function slatePayload(db: Database, date: string) {
   const store = getStore();
   const research = researchAvailability();
+  const bettingPros = bettingProsAvailability();
   return {
     ok: true as const,
     storageMode: store.mode,
     storageMessage: storageMessage(store.mode),
     researchState: research.state,
     researchMessage: research.message,
+    bettingProsState: bettingPros.state,
+    bettingProsMessage: bettingPros.message,
     slate: buildSlate(db, date),
   };
 }

@@ -99,6 +99,9 @@ export type PlayerRate = {
   season: string;
   ptsPer100: number | null;
   ptsPer100Games: number | null;
+  /** Basketball-Reference season usage, already in percent (28.4 means 28.4%). */
+  usgPct?: number | null;
+  usgGames?: number | null;
   rebPerMinute: number | null;
   rebPerMinuteGames: number | null;
   recentPointsPerGame: number | null;
@@ -275,9 +278,19 @@ export function freshnessFlag(label: string, timestamp: string | null, slateDate
   return null;
 }
 
-/** Signed team spread: negative means that team is favored. */
+/** Signed team spread: negative means that team is favored. Half the spread, shown as context. */
 export function impliedTeamPoints(gameTotal: number, signedTeamSpread: number): number {
   return (gameTotal - signedTeamSpread) / 2;
+}
+
+/**
+ * Team points inside the minutes weight.
+ * Favorite spread is negative: add that size to half the total when favored, subtract it otherwise.
+ */
+export function favoredTeamPoints(gameTotal: number, signedTeamSpread: number): number {
+  const half = gameTotal / 2;
+  const size = Math.abs(signedTeamSpread);
+  return signedTeamSpread < 0 ? half + size : half - size;
 }
 
 export function weightedDvp(l30Diff: number, l15Diff: number): number {
@@ -350,8 +363,13 @@ export type PointsInput = {
   paceDiff: number | null;
   gamePace: number | null;
   gamePacePartial: boolean;
+  /** Half the total, plus the spread when favored and minus it when not. */
+  teamPoints?: number | null;
+  /** Season usage in percent, from Basketball-Reference. Not points per 100 possessions. */
+  usgPct?: number | null;
+  usgGames?: number | null;
   strengths: Settings;
-  /** Accepted and ignored. Prop lines do not enter the forecast. */
+  /** Points line. Used only in the last-15 and minutes-share weights. */
   line?: number | null;
 };
 
@@ -392,11 +410,18 @@ function sampleGate(games: number | null, minimum: number, label: string): strin
   return null;
 }
 
+function sourcesForBaseline(sources: SourceValue[], flags: string[]): SourceValue[] {
+  if (sources.some((source) => source.source === "numberfire" && source.value != null)) {
+    flags.push("NumberFire projections are not used.");
+  }
+  return sources.filter((source) => source.source !== "numberfire" && source.value != null && Number.isFinite(source.value));
+}
+
 export function projectPoints(input: PointsInput): StatProjection {
-  const used = input.sources.filter((s) => s.value != null && Number.isFinite(s.value));
+  const flags: string[] = [];
+  const used = sourcesForBaseline(input.sources, flags);
   const baseline = average(used.map((s) => s.value as number));
   const sourcesUsed = used.map((s) => s.source);
-  const flags: string[] = [];
   if (sourcesUsed.length === 1) flags.push("Points baseline uses one outside source.");
   if (baseline == null) {
     return {
@@ -428,45 +453,31 @@ export function projectPoints(input: PointsInput): StatProjection {
     });
   }
 
-  if (input.paceDiff == null) adjustments.push(skip("pace", "Pace", "opponent pace differential is missing", s.pacePointsStrength));
-  else {
-    const delta = input.paceDiff / s.pacePointsStrength;
-    adjustments.push({
-      key: "pace",
-      label: "Pace",
-      status: "applied",
-      reason: null,
-      input: input.paceDiff,
-      strength: s.pacePointsStrength,
-      delta,
-      detail: `${roundDetail(input.paceDiff)} opponent pace differential / ${s.pacePointsStrength} = ${roundDetail(delta)}.`,
-    });
-  }
+  adjustments.push(skip("pace", "Pace", "Pace is not a live input", s.pacePointsStrength));
 
-  const recentReason = input.recentPerGame == null
+  const recentSample = input.recentPerGame == null
     ? "recent points per game is missing"
     : sampleGate(input.recentGames, s.minRecentGames, "Recent points");
+  const recentReason = recentSample ?? (input.line == null ? "points line is missing" : null);
   if (recentReason) adjustments.push(skip("recent", "Recent performance", recentReason, s.recentPointsStrength));
   else {
     const recent = input.recentPerGame as number;
-    const delta = (recent - baseline) / s.recentPointsStrength;
+    const line = input.line as number;
+    const delta = (recent - line) / s.recentPointsStrength;
     adjustments.push({
       key: "recent",
       label: "Recent performance",
       status: "applied",
       reason: null,
-      input: recent - baseline,
+      input: recent - line,
       strength: s.recentPointsStrength,
       delta,
-      detail: `(${roundDetail(recent)} recent points per game − ${roundDetail(baseline)} baseline) / ${s.recentPointsStrength} = ${roundDetail(delta)}. The prop line is not used.`,
+      detail: `(${roundDetail(recent)} last-15 points per game − ${roundDetail(line)} points line) / ${s.recentPointsStrength} = ${roundDetail(delta)}.`,
     });
   }
 
-  adjustments.push(pointsMinutesAdjustment(input, baseline));
+  adjustments.push(pointsMinutesAdjustment(input));
   const minutesAdj = adjustments[adjustments.length - 1];
-  if (minutesAdj.status === "applied" && input.gamePacePartial) {
-    flags.push("Game pace uses one team because the other team's possessions per 48 minutes are missing.");
-  }
   if (minutesAdj.reason?.includes("mis-scaled")) flags.push(minutesAdj.reason);
 
   const projection = baseline + adjustments.reduce((sum, adj) => sum + (adj.delta ?? 0), 0);
@@ -482,44 +493,39 @@ export function projectPoints(input: PointsInput): StatProjection {
   };
 }
 
-function pointsMinutesAdjustment(input: PointsInput, baseline: number): Adjustment {
+function pointsMinutesAdjustment(input: PointsInput): Adjustment {
   const strength = input.strengths.minutesPointsStrength;
   const label = "Minutes";
-  if (input.ptsPer100 == null) return skip("minutes", label, "points per 100 possessions is missing", strength);
-  if (input.ptsPer100 <= 1.5 || input.ptsPer100 > 80) {
-    return skip(
-      "minutes",
-      label,
-      `points per 100 possessions (${input.ptsPer100}) looks mis-scaled and was not treated as a percentage of team points`,
-      strength,
-    );
+  if (input.usgPct == null) {
+    return skip("minutes", label, "usage percent is missing. Points per 100 possessions are not used as a share of team points", strength);
   }
-  const sample = sampleGate(input.ptsPer100Games, input.strengths.minRateGames, "Points per 100 possessions");
+  if (input.usgPct <= 1.5 || input.usgPct > 60) {
+    return skip("minutes", label, `usage percent (${input.usgPct}) looks mis-scaled and was not applied`, strength);
+  }
+  const sample = sampleGate(input.usgGames ?? null, input.strengths.minRateGames, "Usage");
   if (sample) return skip("minutes", label, sample, strength);
   if (input.projectedMinutes == null) return skip("minutes", label, "projected minutes are missing", strength);
-  if (input.gamePace == null) {
-    return skip("minutes", label, "possessions per 48 minutes are missing. Team points were not used as a substitute", strength);
-  }
-  const possessions = input.gamePace * (input.projectedMinutes / 48);
-  const ratePoints = (input.ptsPer100 * possessions) / 100;
-  const delta = (ratePoints - baseline) / strength;
+  if (input.teamPoints == null) return skip("minutes", label, "team points are missing", strength);
+  if (input.line == null) return skip("minutes", label, "points line is missing", strength);
+  const share = input.teamPoints * (input.projectedMinutes / 48) * (input.usgPct / 100);
+  const delta = (share - input.line) / strength;
   return {
     key: "minutes",
     label,
     status: "applied",
     reason: null,
-    input: ratePoints - baseline,
+    input: share - input.line,
     strength,
     delta,
-    detail: `${roundDetail(input.ptsPer100)} points per 100 possessions × ${roundDetail(possessions)} possessions / 100 = ${roundDetail(ratePoints)}. (${roundDetail(ratePoints)} − ${roundDetail(baseline)} baseline) / ${strength} = ${roundDetail(delta)}. Team points are not used.`,
+    detail: `${roundDetail(input.teamPoints)} team points × ${roundDetail(input.projectedMinutes)}/48 × ${roundDetail(input.usgPct)}/100 = ${roundDetail(share)}. (${roundDetail(share)} − ${roundDetail(input.line)} points line) / ${strength} = ${roundDetail(delta)}.`,
   };
 }
 
 export function projectRebounds(input: ReboundsInput): StatProjection {
-  const used = input.sources.filter((s) => s.value != null && Number.isFinite(s.value));
+  const flags: string[] = [];
+  const used = sourcesForBaseline(input.sources, flags);
   const baseline = average(used.map((s) => s.value as number));
   const sourcesUsed = used.map((s) => s.source);
-  const flags: string[] = [];
   if (sourcesUsed.length === 1) flags.push("Rebounds baseline uses one outside source.");
   if (baseline == null) {
     return {
@@ -551,56 +557,33 @@ export function projectRebounds(input: ReboundsInput): StatProjection {
     });
   }
 
-  if (input.paceDiff == null) adjustments.push(skip("pace", "Pace", "opponent pace differential is missing", s.paceReboundsStrength));
-  else {
-    const delta = input.paceDiff / s.paceReboundsStrength;
-    adjustments.push({
-      key: "pace",
-      label: "Pace",
-      status: "applied",
-      reason: null,
-      input: input.paceDiff,
-      strength: s.paceReboundsStrength,
-      delta,
-      detail: `${roundDetail(input.paceDiff)} opponent pace differential / ${s.paceReboundsStrength} = ${roundDetail(delta)}.`,
-    });
-  }
+  adjustments.push(skip("pace", "Pace", "Pace is not a live input", s.paceReboundsStrength));
 
+  const sportsline = used.find((source) => source.source === "sportsline")?.value ?? null;
+  const anchor = sportsline ?? baseline;
+  const anchorLabel = sportsline != null ? "SportsLine rebounds" : "outside rebounds";
   const recentReason = input.recentPerGame == null
     ? "recent rebounds per game is missing"
     : sampleGate(input.recentGames, s.minRecentGames, "Recent rebounds");
-  if (recentReason) adjustments.push(skip("recent", "Recent performance", recentReason, s.recentReboundsStrength));
-  else {
+  if (recentReason || anchor == null) {
+    adjustments.push(skip("recent", "Recent performance", recentReason ?? "outside rebounds are missing", s.recentReboundsStrength));
+  } else {
     const recent = input.recentPerGame as number;
-    const delta = (recent - baseline) / s.recentReboundsStrength;
+    const delta = (recent - anchor) / s.recentReboundsStrength;
     adjustments.push({
       key: "recent",
       label: "Recent performance",
       status: "applied",
       reason: null,
-      input: recent - baseline,
+      input: recent - anchor,
       strength: s.recentReboundsStrength,
       delta,
-      detail: `(${roundDetail(recent)} recent rebounds per game − ${roundDetail(baseline)} baseline) / ${s.recentReboundsStrength} = ${roundDetail(delta)}. The prop line is not used.`,
+      detail: `(${roundDetail(recent)} last-15 rebounds per game − ${roundDetail(anchor)} ${anchorLabel}) / ${s.recentReboundsStrength} = ${roundDetail(delta)}.`,
     });
   }
 
-  adjustments.push(reboundsMinutesAdjustment(input, baseline));
-  if (input.oppReboundDiff == null) {
-    adjustments.push(skip("opp_rebounds", "Opponent rebounds allowed", "opponent rebound differential is missing", s.oppReboundsStrength));
-  } else {
-    const delta = input.oppReboundDiff / s.oppReboundsStrength;
-    adjustments.push({
-      key: "opp_rebounds",
-      label: "Opponent rebounds allowed",
-      status: "applied",
-      reason: null,
-      input: input.oppReboundDiff,
-      strength: s.oppReboundsStrength,
-      delta,
-      detail: `${roundDetail(input.oppReboundDiff)} opponent rebound differential / ${s.oppReboundsStrength} = ${roundDetail(delta)}.`,
-    });
-  }
+  adjustments.push(reboundsMinutesAdjustment(input, anchor, anchorLabel));
+  adjustments.push(skip("opp_rebounds", "Opponent rebounds allowed", "Opponent rebounds are not a live input", s.oppReboundsStrength));
 
   const projection = baseline + adjustments.reduce((sum, adj) => sum + (adj.delta ?? 0), 0);
   return {
@@ -615,7 +598,7 @@ export function projectRebounds(input: ReboundsInput): StatProjection {
   };
 }
 
-function reboundsMinutesAdjustment(input: ReboundsInput, baseline: number): Adjustment {
+function reboundsMinutesAdjustment(input: ReboundsInput, anchor: number | null, anchorLabel: string): Adjustment {
   const strength = input.strengths.minutesReboundsStrength;
   const label = "Minutes";
   if (input.rebPerMinute == null) return skip("minutes", label, "rebounds per minute is missing", strength);
@@ -625,17 +608,18 @@ function reboundsMinutesAdjustment(input: ReboundsInput, baseline: number): Adju
   const sample = sampleGate(input.rebPerMinuteGames, input.strengths.minRateGames, "Rebounds per minute");
   if (sample) return skip("minutes", label, sample, strength);
   if (input.projectedMinutes == null) return skip("minutes", label, "projected minutes are missing", strength);
+  if (anchor == null) return skip("minutes", label, "outside rebounds are missing", strength);
   const expected = input.rebPerMinute * input.projectedMinutes;
-  const delta = (expected - baseline) / strength;
+  const delta = (expected - anchor) / strength;
   return {
     key: "minutes",
     label,
     status: "applied",
     reason: null,
-    input: expected - baseline,
+    input: expected - anchor,
     strength,
     delta,
-    detail: `${roundDetail(input.rebPerMinute)} rebounds per minute × ${roundDetail(input.projectedMinutes)} minutes = ${roundDetail(expected)}. (${roundDetail(expected)} − ${roundDetail(baseline)} baseline) / ${strength} = ${roundDetail(delta)}.`,
+    detail: `${roundDetail(input.rebPerMinute)} rebounds per minute × ${roundDetail(input.projectedMinutes)} minutes = ${roundDetail(expected)}. (${roundDetail(expected)} − ${roundDetail(anchor)} ${anchorLabel}) / ${strength} = ${roundDetail(delta)}.`,
   };
 }
 
@@ -1085,6 +1069,8 @@ export function importRecords(db: Database, kind: ImportKind, rows: { rowNumber:
       }
       const pts = num(row.values, "pts_per_100");
       const ptsGames = int(row.values, "pts_per_100_games");
+      const usg = num(row.values, "usg_pct");
+      const usgGames = int(row.values, "usg_games");
       let reb = num(row.values, "reb_per_minute");
       const rebGames = int(row.values, "reb_per_minute_games");
       const recentPts = num(row.values, "recent_points_per_game");
@@ -1093,7 +1079,7 @@ export function importRecords(db: Database, kind: ImportKind, rows: { rowNumber:
       const trbPer36 = num(row.values, "trb_per_36");
       const recentRebMin = num(row.values, "recent_reb_per_minute");
       const stamped = timestamp(row.values);
-      const bad = parsedError([pts, ptsGames, reb, rebGames, recentPts, recentReb, recentGames, trbPer36, recentRebMin, stamped]);
+      const bad = parsedError([pts, ptsGames, usg, usgGames, reb, rebGames, recentPts, recentReb, recentGames, trbPer36, recentRebMin, stamped]);
       if (bad) {
         errors.push({ row: row.rowNumber, message: bad });
         continue;
@@ -1108,11 +1094,16 @@ export function importRecords(db: Database, kind: ImportKind, rows: { rowNumber:
       } else if (rebPerMinute == null && (per36 != null || recentMinute != null)) {
         warnings.push(`Row ${row.rowNumber}: rebounds per minute needs both trb_per_36 and recent_reb_per_minute, so neither component was used alone.`);
       }
+      const previous = next.rates.find((rate) => idsEqual(rate.playerId, player.id));
+      const usgValue = val(usg);
+      const usgSample = val(usgGames);
       incoming.push({
         playerId: player.id,
         season: CURRENT_SEASON,
         ptsPer100: val(pts),
         ptsPer100Games: val(ptsGames),
+        usgPct: usgValue ?? previous?.usgPct ?? null,
+        usgGames: usgSample ?? previous?.usgGames ?? null,
         rebPerMinute,
         rebPerMinuteGames: rebSample,
         recentPointsPerGame: val(recentPts),
@@ -1436,17 +1427,8 @@ function evaluatePlayer(db: Database, player: Player, game: Game): Eval {
   const minuteValues = projections.map((p) => p.minutes).filter((m): m is number => m != null);
   const minutesImported = average(minuteValues);
   const minutesUsed = override ? override.minutes : minutesImported;
-
-  let gamePace: number | null = null;
-  let gamePacePartial = false;
-  if (teamPace?.pace != null && oppPace?.pace != null) gamePace = (teamPace.pace + oppPace.pace) / 2;
-  else if (teamPace?.pace != null) {
-    gamePace = teamPace.pace;
-    gamePacePartial = true;
-  } else if (oppPace?.pace != null) {
-    gamePace = oppPace.pace;
-    gamePacePartial = true;
-  }
+  const pointsLine = lineFor(db, player.playerId, game.gameId, "points");
+  const teamPoints = vegas ? favoredTeamPoints(vegas.total, vegas.spread) : null;
 
   const sharedFlags: string[] = [];
   if (ignoredPrior || priorRate) sharedFlags.push("A prior-season input was present and was not used.");
@@ -1457,12 +1439,16 @@ function evaluatePlayer(db: Database, player: Player, game: Game): Eval {
     projectedMinutes: minutesUsed,
     ptsPer100: rate?.ptsPer100 ?? null,
     ptsPer100Games: rate?.ptsPer100Games ?? null,
+    usgPct: rate?.usgPct ?? null,
+    usgGames: rate?.usgGames ?? null,
     recentPerGame: rate?.recentPointsPerGame ?? null,
     recentGames: rate?.recentGames ?? null,
     dvpDiff: dvp?.pointsDiff ?? null,
-    paceDiff: oppPace?.paceDiff ?? null,
-    gamePace,
-    gamePacePartial,
+    paceDiff: null,
+    gamePace: null,
+    gamePacePartial: false,
+    teamPoints,
+    line: pointsLine?.line ?? null,
     strengths: db.settings,
   });
   const rebounds = projectRebounds({
@@ -1485,7 +1471,8 @@ function evaluatePlayer(db: Database, player: Player, game: Game): Eval {
   let impliedDetail: string | null = null;
   if (vegas) {
     implied = impliedTeamPoints(vegas.total, vegas.spread);
-    impliedDetail = `(${vegas.total} total − ${vegas.spread} signed spread) / 2 = ${roundDetail(implied)}. This is game context and is not a share of the player projection.`;
+    const favored = favoredTeamPoints(vegas.total, vegas.spread);
+    impliedDetail = `(${vegas.total} total − ${vegas.spread} signed spread) / 2 = ${roundDetail(implied)}. The minutes weight uses ${roundDetail(favored)}: half the total, plus the spread when this team is favored and minus it when not.`;
   }
 
   const lineStamps = current(db.lines)
