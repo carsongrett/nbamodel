@@ -99,8 +99,60 @@ test("team aliases are exact and combined rows are not teams", () => {
   assert.equal(canonicalTeam("BRK"), "BKN");
   assert.equal(canonicalTeam("gs"), "GSW");
   assert.equal(canonicalTeam("PHO"), "PHX");
+  assert.equal(canonicalTeam("NOR"), "NOP");
+  assert.equal(canonicalTeam("UTH"), "UTA");
+  assert.equal(canonicalTeam("WSH"), "WAS");
   assert.equal(canonicalTeam("TOT"), null);
   assert.equal(canonicalTeam("Lakers"), null);
+});
+
+test("the same matchup under another abbreviation keeps the spread and still opens", () => {
+  const date = "2026-11-02";
+  const nop = `${date}|NOP@MEM`;
+  const nor = `${date}|NOR@MEM`;
+  const utah = `${date}|UTA@SAS`;
+  const uth = `${date}|UTH@SAS`;
+  const bare = `${date}|DAL@BOS`;
+  const db = {
+    ...emptyDatabase(),
+    players: [
+      { playerId: "willizi01", displayName: "Zion Williamson", teamId: "NOR", position: "PF" as const, season: CURRENT_SEASON },
+      { playerId: "moranja01", displayName: "Ja Morant", teamId: "MEM", position: "PG" as const, season: CURRENT_SEASON },
+      { playerId: "doncilu01", displayName: "Luka Doncic", teamId: "DAL", position: "PG" as const, season: CURRENT_SEASON },
+    ],
+    games: [
+      { gameId: nop, season: CURRENT_SEASON, gameDate: date, homeTeamId: "MEM", awayTeamId: "NOP", status: "scheduled" as const },
+      { gameId: nor, season: CURRENT_SEASON, gameDate: date, homeTeamId: "MEM", awayTeamId: "NOR", status: "scheduled" as const },
+      { gameId: utah, season: CURRENT_SEASON, gameDate: date, homeTeamId: "SAS", awayTeamId: "UTA", status: "scheduled" as const },
+      { gameId: uth, season: CURRENT_SEASON, gameDate: date, homeTeamId: "SAS", awayTeamId: "UTH", status: "scheduled" as const },
+      { gameId: bare, season: CURRENT_SEASON, gameDate: date, homeTeamId: "BOS", awayTeamId: "DAL", status: "scheduled" as const },
+    ],
+    vegas: [
+      { gameId: nop, teamId: "MEM", season: CURRENT_SEASON, spread: -5.5, total: 232.5, sourceTimestamp: retrievedAt },
+      { gameId: utah, teamId: "SAS", season: CURRENT_SEASON, spread: -16.5, total: 228.5, sourceTimestamp: retrievedAt },
+    ],
+    projections: [
+      { playerId: "willizi01", gameId: nor, source: "sportsline", season: CURRENT_SEASON, points: 24, rebounds: 7, minutes: 33, sourceTimestamp: retrievedAt },
+      { playerId: "moranja01", gameId: nop, source: "sportsline", season: CURRENT_SEASON, points: 22, rebounds: 5, minutes: 32, sourceTimestamp: retrievedAt },
+      { playerId: "doncilu01", gameId: bare, source: "sportsline", season: CURRENT_SEASON, points: 30, rebounds: 8, minutes: 36, sourceTimestamp: retrievedAt },
+    ],
+  };
+  const slate = buildSlate(db, date);
+  assert.deepEqual(slate.games.map((game) => game.label), ["DAL at BOS", "NOP at MEM", "UTA at SAS"]);
+  assert.equal(slate.games.find((game) => game.gameId === nop)?.spread, -5.5);
+  assert.equal(slate.games.find((game) => game.gameId === nop)?.total, 232.5);
+  assert.equal(slate.games.find((game) => game.gameId === utah)?.spread, -16.5);
+  assert.equal(slate.games.find((game) => game.gameId === utah)?.total, 228.5);
+  assert.equal(slate.games.find((game) => game.gameId === bare)?.spread, null);
+  assert.equal(slate.games.find((game) => game.gameId === bare)?.total, null);
+  assert.equal(slate.rows.filter((row) => row.gameId === nop).length, 2);
+  const zion = slate.rows.find((row) => row.playerId === "willizi01");
+  const luka = slate.rows.find((row) => row.playerId === "doncilu01");
+  assert.equal(zion?.teamId, "NOP");
+  assert.equal(zion?.stats.points.blockReason, null);
+  assert.equal(zion?.stats.points.projection != null, true);
+  assert.equal(luka?.stats.points.blockReason, null);
+  assert.equal(slate.rows.some((row) => row.gameId === nor || row.gameId === uth), false);
 });
 
 test("sportsline uses PTS MIN and TRB and ignores PROJ", () => {

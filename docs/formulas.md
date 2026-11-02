@@ -61,7 +61,7 @@ The points line is inside two weights only: last-15 points per game minus the li
 
 Rebounds subtract SportsLine TRB in the last-15 and minutes weights. They do not subtract the rebounds line. Points plus rebounds is still the sum. Edge is still projection minus the line.
 
-Today's refresh drops sample rows and matches an exact normalized name on the same team. Accents and punctuation are removed first, so Dončić matches Doncic, and a Jr suffix does not. Two players with that name on the team are not assigned. An existing source id still wins. Team abbreviations use a fixed alias list so BRK and BKN are the same team id.
+Today's refresh drops sample rows and matches an exact normalized name on the same team. Accents and punctuation are removed first, so Dončić matches Doncic, and a Jr suffix does not. Two players with that name on the team are not assigned. An existing source id still wins. Team abbreviations use a fixed alias list, so BRK and BKN are one team, NOR and NOP are one team, and UTH and UTA are one team. A second copy of a game under another abbreviation is folded into the game that has the spread and total. A game that still has neither stays on the board and opens without treating the missing number as a failure.
 
 ## Trace
 

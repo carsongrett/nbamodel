@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { emptyDatabase, type Actual, type Database, type Dvp, type Finding, type Game, type IdMap, type MinutesOverride, type OppRebound, type OutsideProjection, type PaceRow, type Player, type PlayerRate, type PregameStat, type PropLine, type Settings, type Team, type Vegas, DEFAULT_SETTINGS } from "./engine";
+import { canonicalizeDatabase, emptyDatabase, type Actual, type Database, type Dvp, type Finding, type Game, type IdMap, type MinutesOverride, type OppRebound, type OutsideProjection, type PaceRow, type Player, type PlayerRate, type PregameStat, type PropLine, type Settings, type Team, type Vegas, DEFAULT_SETTINGS } from "./engine";
 
 export type StorageMode = "local" | "supabase";
 
@@ -37,7 +37,7 @@ export async function updateDatabase<T>(mutate: (db: Database) => { db?: Databas
   const store = getStore();
   let result!: T;
   await locked(async () => {
-    const db = await store.read();
+    const db = canonicalizeDatabase(await store.read());
     const out = await mutate(db);
     if (out.db) await store.write(out.db);
     result = out.result;

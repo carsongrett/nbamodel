@@ -94,7 +94,7 @@ function gameOdds(game: SlateGame): string {
     parts.push(`${game.homeTeamId} ${sign}${numberText(Math.abs(game.spread))}`);
   }
   if (game.total != null) parts.push(`Total ${numberText(game.total)}`);
-  return parts.join(" · ");
+  return parts.length ? parts.join(" · ") : "Spread and total not loaded";
 }
 
 function saveLabel(line: number | null, source: string): string {

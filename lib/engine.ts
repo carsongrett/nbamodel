@@ -1,3 +1,5 @@
+import { canonicalTeam, matchupGameId } from "./sources/teams";
+
 export const CURRENT_SEASON = "2026-27";
 
 export const POSITIONS = ["PG", "SG", "SF", "PF", "C"] as const;
@@ -1836,7 +1838,93 @@ function viewStat(
   };
 }
 
+function preferFirst<T>(current: T): T {
+  return current;
+}
+
+export function canonicalizeDatabase(db: Database): Database {
+  const teamOf = (id: string) => canonicalTeam(id) ?? id;
+  const gameIdOf = new Map<string, string>();
+  const games: Game[] = [];
+  for (const game of db.games) {
+    const homeTeamId = teamOf(game.homeTeamId);
+    const awayTeamId = teamOf(game.awayTeamId);
+    const gameId = game.gameId.includes("@") ? matchupGameId(game.gameDate, awayTeamId, homeTeamId) : game.gameId;
+    gameIdOf.set(game.gameId, gameId);
+    const next = { ...game, gameId, homeTeamId, awayTeamId };
+    const at = games.findIndex((row) => row.gameId === gameId);
+    if (at < 0) games.push(next);
+    else {
+      const statusRank = { scheduled: 0, in_progress: 1, final: 2 };
+      const status = statusRank[games[at].status] >= statusRank[next.status] ? games[at].status : next.status;
+      games[at] = { ...games[at], status };
+    }
+  }
+  const gameOf = (gameId: string) => gameIdOf.get(gameId) ?? gameId;
+  const teams = dedupe(db.teams.map((row) => ({ ...row, teamId: teamOf(row.teamId) })), (row) => row.teamId, (current, incoming) =>
+    current.name !== current.teamId ? current : incoming.name !== incoming.teamId ? incoming : current,
+  );
+  return {
+    ...db,
+    teams,
+    players: dedupe(db.players.map((row) => ({ ...row, teamId: teamOf(row.teamId) })), (row) => row.playerId, preferFirst),
+    games,
+    idMap: db.idMap.map((row) => row.entityType === "team" ? { ...row, canonicalId: teamOf(row.canonicalId) } : row),
+    projections: dedupe(
+      db.projections.map((row) => ({ ...row, gameId: gameOf(row.gameId) })),
+      (row) => `${row.playerId}|${row.gameId}|${row.source}`,
+      (current, incoming) => current.points != null || current.rebounds != null ? current : incoming,
+    ),
+    lines: dedupe(
+      db.lines.map((row) => ({ ...row, gameId: gameOf(row.gameId) })),
+      (row) => `${row.playerId}|${row.gameId}|${row.stat}`,
+      (current, incoming) => current.source === "manual" ? current : incoming.source === "manual" ? incoming : current,
+    ),
+    dvp: dedupe(db.dvp.map((row) => ({ ...row, teamId: teamOf(row.teamId) })), (row) => `${row.teamId}|${row.position}`, (current, incoming) =>
+      current.pointsDiff != null || current.reboundsDiff != null ? current : incoming,
+    ),
+    pace: dedupe(db.pace.map((row) => ({ ...row, teamId: teamOf(row.teamId) })), (row) => row.teamId, (current, incoming) =>
+      current.pace != null ? current : incoming,
+    ),
+    oppRebounds: dedupe(db.oppRebounds.map((row) => ({ ...row, teamId: teamOf(row.teamId) })), (row) => row.teamId, (current, incoming) =>
+      current.reboundDiff != null ? current : incoming,
+    ),
+    vegas: dedupe(
+      db.vegas.map((row) => ({ ...row, gameId: gameOf(row.gameId), teamId: teamOf(row.teamId) })),
+      (row) => `${row.gameId}|${row.teamId}`,
+      preferFirst,
+    ),
+    overrides: dedupe(
+      db.overrides.map((row) => ({ ...row, gameId: gameOf(row.gameId) })),
+      (row) => `${row.playerId}|${row.gameId}`,
+      preferFirst,
+    ),
+    pregame: dedupe(
+      db.pregame.map((row) => ({ ...row, gameId: gameOf(row.gameId) })),
+      (row) => `${row.playerId}|${row.gameId}|${row.stat}`,
+      (current, incoming) => current.line != null ? current : incoming,
+    ),
+    actuals: dedupe(
+      db.actuals.map((row) => ({ ...row, gameId: gameOf(row.gameId) })),
+      (row) => `${row.playerId}|${row.gameId}`,
+      (current, incoming) => current.points != null || current.rebounds != null ? current : incoming,
+    ),
+    research: db.research.map((row) => ({ ...row, teamId: row.teamId ? teamOf(row.teamId) : row.teamId })),
+  };
+}
+
+function dedupe<T>(rows: T[], keyFn: (row: T) => string, prefer: (current: T, incoming: T) => T): T[] {
+  const kept = new Map<string, T>();
+  for (const row of rows) {
+    const key = keyFn(row);
+    const current = kept.get(key);
+    kept.set(key, current ? prefer(current, row) : row);
+  }
+  return [...kept.values()];
+}
+
 export function buildSlate(db: Database, date: string): SlateView {
+  db = canonicalizeDatabase(db);
   const teamName = (id: string) => db.teams.find((t) => idsEqual(t.teamId, id))?.name ?? id;
   const rows: SlateRow[] = [];
   for (const { player, game } of playerGames(db, date)) {

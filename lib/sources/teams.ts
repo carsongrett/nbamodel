@@ -7,12 +7,17 @@ const ALIASES: Record<string, string> = {
   GS: "GSW",
   NOP: "NOP",
   NO: "NOP",
+  NOR: "NOP",
   NYK: "NYK",
   NY: "NYK",
   PHO: "PHX",
   PHX: "PHX",
   SAS: "SAS",
   SA: "SAS",
+  UTA: "UTA",
+  UTH: "UTA",
+  WAS: "WAS",
+  WSH: "WAS",
 };
 
 const NOT_A_TEAM = new Set(["TOT", "2TM", "3TM"]);
