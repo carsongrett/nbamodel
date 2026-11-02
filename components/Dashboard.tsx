@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Grade, Settings, SlateStat, SlateView, Stat } from "../lib/engine";
+import type { Settings, SlateStat, SlateView, Stat } from "../lib/engine";
 import AboutDesk from "./AboutDesk";
 
 type Payload = {
@@ -64,10 +64,12 @@ function odds(value: number | null): string {
   return value > 0 ? `+${value}` : String(value);
 }
 
-function gradeLabel(grade: Grade): string {
-  if (grade === "no_pick") return "No pick";
-  if (grade === "dnp") return "DNP";
-  return grade;
+function deltaStyle(edge: number | null): { background: string } | undefined {
+  if (edge == null || Math.abs(edge) < 0.05) return undefined;
+  const amount = Math.min(Math.abs(edge) / 4, 1);
+  const alpha = (0.14 + amount * 0.46).toFixed(2);
+  const color = edge > 0 ? `rgba(22, 101, 52, ${alpha})` : `rgba(159, 18, 57, ${alpha})`;
+  return { background: color };
 }
 
 export default function Dashboard({ initialDate, authConfigured }: { initialDate: string; authConfigured: boolean }) {
@@ -257,26 +259,23 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       <div className="table-wrap">
         <table>
           <caption className="meta" style={{ captionSide: "bottom", padding: 10 }}>
-            A player is listed when one published name matches that team. Grades use the saved pregame line. Refresh games on a later day fills those results from Basketball Reference. Pushes, DNPs, unresolved games, and no-picks are outside the win rate. {STATS.find((item) => item.id === stat)?.label}.
+            A player is listed when one published name matches that team. Delta is the projection minus the line. Green is above the line and red is below it. {STATS.find((item) => item.id === stat)?.label}.
           </caption>
           <thead>
             <tr>
               <th>Player</th>
               <th>Team</th>
               <th>Opp</th>
-              <th className="num">Minutes</th>
               <th className="num">Projection</th>
               <th className="num">Line</th>
+              <th className="num">Delta</th>
               <th className="num">Over</th>
               <th className="num">Under</th>
-              <th className="num">Proj − line</th>
-              <th>Pick</th>
-              <th>Result</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={11}>No players for this filter.</td></tr>
+              <tr><td colSpan={8}>No players for this filter.</td></tr>
             ) : rows.map((row) => {
               const cell = row.stats[stat];
               const key = `${row.playerId}|${row.gameId}`;
@@ -288,27 +287,20 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                     <Trace stat={cell} implied={row.impliedDetail} locked={row.locked} />
                   </td>
                   <td>{row.teamId}</td>
-                  <td>{row.opponentId}<div className="meta">{row.gameLabel}</div></td>
-                  <td className="num">{fmt(row.minutesUsed, 1)}</td>
+                  <td>{row.opponentId}</td>
                   <td className="num">
                     {cell.blockReason && cell.projection == null ? "Blocked" : fmt(cell.projection)}
                     <div className="meta">{cell.source === "saved" ? "Saved pregame" : cell.savedAt ? "Preview, unsaved" : "Preview"}</div>
-                  </td>
-                  <td className="num">{fmt(cell.line, 1)}</td>
-                  <td className="num">{odds(cell.overOdds)}</td>
-                  <td className="num">{odds(cell.underOdds)}</td>
-                  <td className="num">{fmt(cell.edge)}</td>
-                  <td>{cell.pick ?? "—"}</td>
-                  <td>
-                    <div className={`grade ${cell.grade}`}>{gradeLabel(cell.grade)}</div>
-                    <div className="meta">{cell.actual == null ? "" : `Actual ${fmt(cell.actual, 1)}`}</div>
-                    <div className="meta">{cell.error == null ? "" : `Error ${fmt(cell.error)}`}</div>
                     {cell.blockReason ? (
                       <div className="flags">
                         <span className="flag">{cell.blockReason}</span>
                       </div>
                     ) : null}
                   </td>
+                  <td className="num">{fmt(cell.line, 1)}</td>
+                  <td className="num delta" style={deltaStyle(cell.edge)}>{fmt(cell.edge)}</td>
+                  <td className="num">{odds(cell.overOdds)}</td>
+                  <td className="num">{odds(cell.underOdds)}</td>
                 </tr>
               );
             })}

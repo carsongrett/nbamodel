@@ -56,6 +56,7 @@ table { width: 100%; border-collapse: collapse; font-size: 15px; }
 th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+td.delta { border-radius: 6px; }
 .player { font-weight: 600; }
 .meta { color: var(--muted); font-size: 13px; }
 .flags { display: flex; flex-wrap: wrap; gap: 4px; max-width: 280px; }
