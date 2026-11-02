@@ -1717,12 +1717,22 @@ export type SlateRow = {
   stats: Record<Stat, SlateStat>;
 };
 
+export type SlateGame = {
+  gameId: string;
+  label: string;
+  status: GameStatus;
+  homeTeamId: string;
+  awayTeamId: string;
+  spread: number | null;
+  total: number | null;
+};
+
 export type SlateView = {
   date: string;
   dates: string[];
   settings: Settings;
   teams: Team[];
-  games: { gameId: string; label: string; status: GameStatus }[];
+  games: SlateGame[];
   rows: SlateRow[];
   summaries: Record<Stat, Summary>;
   research: Finding[];
@@ -1803,11 +1813,12 @@ function viewStat(
     };
   }
   const shownLine = line?.line ?? null;
+  const stored = saved != null && saved.line != null && shownLine != null;
   const edge = edgeAndPick(live.projection, shownLine);
   return {
-    source: "preview",
-    savedAt: saved?.savedAt ?? null,
-    savedProjection: saved?.projection ?? null,
+    source: stored ? "saved" : "preview",
+    savedAt: stored ? saved?.savedAt ?? null : null,
+    savedProjection: stored ? saved?.projection ?? null : null,
     baseline: live.baseline,
     projection: live.projection,
     adjustments: live.adjustments,
@@ -1873,9 +1884,22 @@ export function buildSlate(db: Database, date: string): SlateView {
   for (const stat of STATS) {
     summaries[stat] = summarize(rows.map((row) => ({ grade: row.stats[stat].grade, error: row.stats[stat].error })));
   }
-  const games = db.games
+  const games: SlateGame[] = db.games
     .filter((g) => g.gameDate === date && g.season === CURRENT_SEASON)
-    .map((g) => ({ gameId: g.gameId, label: `${g.awayTeamId} at ${g.homeTeamId}`, status: g.status }));
+    .map((g) => {
+      const home = current(db.vegas).find((v) => idsEqual(v.gameId, g.gameId) && idsEqual(v.teamId, g.homeTeamId));
+      const any = current(db.vegas).find((v) => idsEqual(v.gameId, g.gameId));
+      return {
+        gameId: g.gameId,
+        label: `${g.awayTeamId} at ${g.homeTeamId}`,
+        status: g.status,
+        homeTeamId: g.homeTeamId,
+        awayTeamId: g.awayTeamId,
+        spread: home?.spread ?? null,
+        total: home?.total ?? any?.total ?? null,
+      };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
   const dates = [...new Set(db.games.filter((g) => g.season === CURRENT_SEASON).map((g) => g.gameDate))].sort((a, b) => b.localeCompare(a));
   return {
     date,

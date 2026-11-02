@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { applyModelRun, CURRENT_SEASON, emptyDatabase, setPropLine, type Player } from "../lib/engine.ts";
+import { applyModelRun, buildSlate, CURRENT_SEASON, emptyDatabase, setPropLine, type Player } from "../lib/engine.ts";
 import { applyPublicPages, stripSample, type FetchedPage, type PublicFetch } from "../lib/sources/apply.ts";
 import { applyBettingProsProbe } from "../lib/sources/apply-bettingpros.ts";
 import { fetchBettingProsDay, parseGameMarket, type ProbeResult } from "../lib/sources/bettingpros.ts";
@@ -293,14 +293,14 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
     if (marketId === 129 || marketId === 128) {
       return { ok: true, status: 200, text: async () => JSON.stringify({ offers: [], _pagination: { page: 1, total_pages: 1 } }) };
     }
-    const line = marketId === 157 ? 8.5 : marketId === 336 ? 30.5 : 22.5;
+    const line = marketId === 157 ? 8.5 : 22.5;
     return { ok: true, status: 200, text: async () => offerBody(marketId, pageNumber, 2, line) };
   });
-  assert.equal(urls.filter((url) => url.includes("page=2")).length, 3);
+  assert.equal(urls.filter((url) => url.includes("page=2")).length, 2);
   assert.equal(urls.some((url) => url.includes("page=3")), false);
   assert.equal(urls.filter((url) => url.includes("market_id=156")).length, 2);
   assert.equal(urls.filter((url) => url.includes("market_id=157")).length, 2);
-  assert.equal(urls.filter((url) => url.includes("market_id=336")).length, 2);
+  assert.equal(urls.some((url) => url.includes("market_id=336")), false);
   assert.equal(urls.some((url) => url.includes("market_id=129") || url.includes("market_id=128")), false);
   assert.equal(urls[1]?.includes("page="), false);
   assert.equal(day.state, "parsed");
@@ -308,14 +308,14 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
 
   const player: Player = { playerId: "doncilu01", displayName: "Luka Doncic", teamId: "LAL", position: "PG", season: CURRENT_SEASON };
   const named = applyBettingProsProbe({ ...emptyDatabase(), players: [player] }, "2026-11-02", day, retrievedAt);
-  assert.equal(named.db.lines.length, 3);
+  assert.equal(named.db.lines.length, 2);
   assert.equal(named.db.lines.find((line) => line.stat === "points")?.line, 22.5);
   assert.equal(named.db.lines.find((line) => line.stat === "rebounds")?.line, 8.5);
-  assert.equal(named.db.lines.find((line) => line.stat === "points_rebounds")?.line, 30.5);
+  assert.equal(named.db.lines.some((line) => line.stat === "points_rebounds"), false);
   assert.equal(named.db.idMap.find((item) => item.source === "bettingpros")?.canonicalId, "doncilu01");
   assert.equal(named.db.vegas.length, 0);
   const repeat = applyBettingProsProbe(named.db, "2026-11-02", day, retrievedAt);
-  assert.equal(repeat.db.lines.length, 3);
+  assert.equal(repeat.db.lines.length, 2);
 
   const unparsedUrls: string[] = [];
   const unparsed = await fetchBettingProsDay("2026-11-02", async (url) => {
@@ -408,6 +408,10 @@ test("history stores a typed line and leaves out a player with no line", () => {
     ...emptyDatabase(),
     players: [luka, reaves],
     games: [{ gameId, season: CURRENT_SEASON, gameDate: "2026-11-02", homeTeamId: "LAL", awayTeamId: "TOR", status: "scheduled" as const }],
+    vegas: [
+      { gameId, teamId: "LAL", season: CURRENT_SEASON, spread: -3.5, total: 220, sourceTimestamp: retrievedAt },
+      { gameId, teamId: "TOR", season: CURRENT_SEASON, spread: 3.5, total: 220, sourceTimestamp: retrievedAt },
+    ],
     projections: [luka, reaves].map((player) => ({
       playerId: player.playerId,
       gameId,
@@ -424,12 +428,27 @@ test("history stores a typed line and leaves out a player with no line", () => {
   assert.equal(typed.db.pregame.length, 1);
   assert.equal(typed.db.pregame[0]?.playerId, luka.playerId);
   assert.equal(typed.db.pregame[0]?.line, 24.5);
+  const savedBoard = buildSlate(typed.db, "2026-11-02");
+  const savedLuka = savedBoard.rows.find((row) => row.playerId === luka.playerId);
+  const openReaves = savedBoard.rows.find((row) => row.playerId === reaves.playerId);
+  assert.equal(savedBoard.games[0]?.label, "TOR at LAL");
+  assert.equal(savedBoard.games[0]?.spread, -3.5);
+  assert.equal(savedBoard.games[0]?.total, 220);
+  assert.equal(savedLuka?.stats.points.source, "saved");
+  assert.equal(savedLuka?.stats.points.line, 24.5);
+  assert.equal(savedLuka?.stats.points.edge, (savedLuka?.stats.points.projection ?? 0) - 24.5);
+  assert.equal(openReaves?.stats.points.source, "preview");
+  assert.equal(openReaves?.stats.points.savedAt, null);
+  assert.equal(openReaves?.stats.points.line, null);
   const ran = applyModelRun(typed.db, "2026-11-02", retrievedAt);
   assert.equal(ran.db.pregame.some((row) => row.playerId === reaves.playerId), false);
   assert.equal(ran.db.pregame.filter((row) => row.playerId === luka.playerId).length, 1);
   const cleared = setPropLine(ran.db, luka.playerId, gameId, "points", null, retrievedAt);
   assert.equal(cleared.db.pregame.length, 0);
   assert.equal(cleared.db.lines.length, 0);
+  const clearedBoard = buildSlate(cleared.db, "2026-11-02");
+  assert.equal(clearedBoard.rows.find((row) => row.playerId === luka.playerId)?.stats.points.source, "preview");
+  assert.equal(clearedBoard.rows.find((row) => row.playerId === luka.playerId)?.stats.points.savedAt, null);
 });
 
 test("a typed line stays when bettingpros loads again", () => {

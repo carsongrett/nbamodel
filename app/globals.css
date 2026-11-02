@@ -52,7 +52,29 @@ button:disabled { opacity: 0.55; cursor: wait; }
 .summary span { display: block; color: var(--muted); font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; }
 .summary strong { font-variant-numeric: tabular-nums; font-size: 22px; }
 
+.board-note { margin: 0 0 8px; }
+.game-list { display: grid; gap: 10px; }
+.game {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+.game > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  padding: 12px 14px;
+}
+.game > summary::-webkit-details-marker { display: none; }
+.game > summary::marker { content: ""; }
+.game-odds { font-variant-numeric: tabular-nums; font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+.empty-games { margin: 0; padding: 14px 16px; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.game-table { border: 0; border-radius: 0; border-top: 1px solid var(--line); background: transparent; }
 table { width: 100%; border-collapse: collapse; font-size: 15px; }
 th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); font-weight: 600; }

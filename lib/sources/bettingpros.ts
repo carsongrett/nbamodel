@@ -25,7 +25,7 @@ export function bettingProsAvailability(): { state: "ready" | "setup_needed"; me
   if (fromProcess) {
     return {
       state: "ready",
-      message: "BettingPros key is set. Run Model loads today's consensus points, rebounds, and points-plus-rebounds lines. The spread and total come from ESPN. The first failed source stops the click, and the desk stops at 40 calls.",
+      message: "BettingPros key is set. Run Model loads today's consensus points and rebounds lines. Points plus rebounds is the two projections added together, and that line is not requested. The spread and total come from ESPN. The first failed source stops the click, and the desk stops at 40 calls.",
     };
   }
   if (!diskKeyAllowed()) {
@@ -139,7 +139,7 @@ function bookLine(books: unknown): { line: number | null; odds: number | null } 
   return { line: null, odds: null };
 }
 
-const LIVE_MARKETS = new Set([POINTS_MARKET_ID, REBOUNDS_MARKET_ID, POINTS_REBOUNDS_MARKET_ID]);
+const LIVE_MARKETS = new Set([POINTS_MARKET_ID, REBOUNDS_MARKET_ID]);
 
 export function parseOffersPage(body: string): { offers: ParsedOffer[]; parsed: boolean; page: number | null; totalPages: number | null; furtherPages: number | null } {
   let json: unknown;
@@ -353,7 +353,7 @@ export async function fetchBettingProsDay(date: string, fetchImpl?: FetchLike): 
 
   for (const event of events.events) {
     if (halt) break;
-    for (const marketId of [POINTS_MARKET_ID, REBOUNDS_MARKET_ID, POINTS_REBOUNDS_MARKET_ID]) {
+    for (const marketId of [POINTS_MARKET_ID, REBOUNDS_MARKET_ID]) {
       const known = event.id === first.id && marketId === POINTS_MARKET_ID ? proof : null;
       let totalPages = known ? (known.totalPages ?? 1) : null;
       for (let page = known ? 2 : 1; totalPages == null || page <= totalPages; page += 1) {

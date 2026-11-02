@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Settings, SlateView, Stat } from "../lib/engine";
+import type { Settings, SlateGame, SlateView, Stat } from "../lib/engine";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
 import Trace from "./Trace";
@@ -83,10 +83,28 @@ function deltaStyle(edge: number | null): { background: string } | undefined {
   return { background: color };
 }
 
+function numberText(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function gameOdds(game: SlateGame): string {
+  const parts: string[] = [];
+  if (game.spread != null) {
+    const sign = game.spread > 0 ? "+" : game.spread < 0 ? "−" : "";
+    parts.push(`${game.homeTeamId} ${sign}${numberText(Math.abs(game.spread))}`);
+  }
+  if (game.total != null) parts.push(`Total ${numberText(game.total)}`);
+  return parts.join(" · ");
+}
+
+function saveLabel(line: number | null, source: string): string {
+  if (line == null) return "Preview";
+  return source === "saved" ? "Saved pregame" : "Preview";
+}
+
 export default function Dashboard({ initialDate, authConfigured }: { initialDate: string; authConfigured: boolean }) {
   const date = initialDate;
   const [stat, setStat] = useState<Stat>("points");
-  const [gameId, setGameId] = useState("");
   const [teamId, setTeamId] = useState("");
   const [payload, setPayload] = useState<Payload | null>(null);
   const [status, setStatus] = useState("Loading the slate.");
@@ -156,9 +174,12 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   }
 
   const slate = payload?.slate;
-  const rows = useMemo(() => {
-    return (slate?.rows ?? []).filter((row) => (gameId ? row.gameId === gameId : true) && (teamId ? row.teamId === teamId : true));
-  }, [slate, gameId, teamId]);
+  const games = useMemo(() => {
+    const rows = (slate?.rows ?? []).filter((row) => (teamId ? row.teamId === teamId : true));
+    return (slate?.games ?? [])
+      .map((game) => ({ game, rows: rows.filter((row) => row.gameId === game.gameId) }))
+      .filter((item) => item.rows.length > 0);
+  }, [slate, teamId]);
 
   async function readFile(file: File | undefined) {
     if (!file) return;
@@ -192,13 +213,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
 
       <div className="row actions">
         <label>
-          Game
-          <select value={gameId} onChange={(event) => setGameId(event.target.value)}>
-            <option value="">All games</option>
-            {slate?.games.map((game) => <option key={game.gameId} value={game.gameId}>{game.label}</option>)}
-          </select>
-        </label>
-        <label>
           Team
           <select value={teamId} onChange={(event) => setTeamId(event.target.value)}>
             <option value="">All teams</option>
@@ -231,76 +245,85 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
         ) : null}
       </section>
 
-      <div className="table-wrap">
-        <table>
-          <caption className="meta" style={{ captionSide: "bottom", padding: 10 }}>
-            Delta is the projection minus the line. Green is above the line and red is below it. {STATS.find((item) => item.id === stat)?.label}. A line from BettingPros or from this box is stored in History. A player with no line is left out. Clear the box to remove that stat.
-          </caption>
-          <thead>
-            <tr>
-              <th>Player</th>
-              <th>Team</th>
-              <th>Opp</th>
-              <th className="num">Projection</th>
-              <th className="num">Line</th>
-              <th className="num">Delta</th>
-              <th className="num">Over</th>
-              <th className="num">Under</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr><td colSpan={8}>No players for this filter.</td></tr>
-            ) : rows.map((row) => {
-              const cell = row.stats[stat];
-              const key = `${row.playerId}|${row.gameId}`;
-              return (
-                <tr key={key}>
-                  <td>
-                    <div className="player">{row.playerName}</div>
-                    <div className="meta">{row.position} · {row.playerId}</div>
-                    <Trace stat={cell} implied={row.impliedDetail} locked={row.locked} />
-                  </td>
-                  <td>{row.teamId}</td>
-                  <td>{row.opponentId}</td>
-                  <td className="num">
-                    {cell.blockReason && cell.projection == null ? "Blocked" : fmt(cell.projection)}
-                    <div className="meta">{cell.source === "saved" ? "Saved pregame" : cell.savedAt ? "Preview, unsaved" : "Preview"}</div>
-                    {cell.blockReason ? (
-                      <div className="flags">
-                        <span className="flag">{cell.blockReason}</span>
-                      </div>
-                    ) : null}
-                  </td>
-                  <td className="num">
-                    {row.locked ? fmt(cell.line, 1) : (
-                      <input
-                        className="line-input"
-                        type="number"
-                        inputMode="decimal"
-                        step="0.5"
-                        min="0"
-                        aria-label={`${row.playerName} ${stat} line`}
-                        defaultValue={cell.line ?? ""}
-                        key={`${key}|${stat}|${cell.line ?? ""}`}
-                        disabled={busy}
-                        onBlur={(event) => {
-                          const next = event.target.value.trim();
-                          const current = cell.line == null ? "" : String(cell.line);
-                          if (next === current) return;
-                          void put("/api/lines", { playerId: row.playerId, gameId: row.gameId, stat, line: next }, "Saving the line…");
-                        }}
-                      />
-                    )}
-                  </td>
-                  <td className="num delta" style={deltaStyle(cell.edge)}>{fmt(cell.edge)}</td>
-                  <td className="num">{odds(cell.overOdds)}</td>
-                  <td className="num">{odds(cell.underOdds)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <p className="meta board-note">
+        Delta is the projection minus the line. Green is above the line and red is below it. {STATS.find((item) => item.id === stat)?.label}. A line from BettingPros or from this box is stored in History. A player with no line is left out. Clear the box to remove that stat. Points plus rebounds is the two projections added together.
+      </p>
+      <div className="game-list">
+        {games.length === 0 ? (
+          <p className="card empty-games">No players for this filter.</p>
+        ) : games.map(({ game, rows }) => (
+          <details className="game" key={game.gameId}>
+            <summary>
+              <span className="player">{game.label}</span>
+              <span className="game-odds">{gameOdds(game)}</span>
+            </summary>
+            <div className="table-wrap game-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Player</th>
+                    <th>Team</th>
+                    <th>Opp</th>
+                    <th className="num">Projection</th>
+                    <th className="num">Line</th>
+                    <th className="num">Delta</th>
+                    <th className="num">Over</th>
+                    <th className="num">Under</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => {
+                    const cell = row.stats[stat];
+                    const key = `${row.playerId}|${row.gameId}`;
+                    return (
+                      <tr key={key}>
+                        <td>
+                          <div className="player">{row.playerName}</div>
+                          <Trace stat={cell} implied={row.impliedDetail} locked={row.locked} />
+                        </td>
+                        <td>{row.teamId}</td>
+                        <td>{row.opponentId}</td>
+                        <td className="num">
+                          {cell.blockReason && cell.projection == null ? "Blocked" : fmt(cell.projection)}
+                          <div className="meta">{saveLabel(cell.line, cell.source)}</div>
+                          {cell.blockReason ? (
+                            <div className="flags">
+                              <span className="flag">{cell.blockReason}</span>
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="num">
+                          {row.locked ? fmt(cell.line, 1) : (
+                            <input
+                              className="line-input"
+                              type="number"
+                              inputMode="decimal"
+                              step="0.5"
+                              min="0"
+                              aria-label={`${row.playerName} ${stat} line`}
+                              defaultValue={cell.line ?? ""}
+                              key={`${key}|${stat}|${cell.line ?? ""}`}
+                              disabled={busy}
+                              onBlur={(event) => {
+                                const next = event.target.value.trim();
+                                const current = cell.line == null ? "" : String(cell.line);
+                                if (next === current) return;
+                                void put("/api/lines", { playerId: row.playerId, gameId: row.gameId, stat, line: next }, "Saving the line…");
+                              }}
+                            />
+                          )}
+                        </td>
+                        <td className="num delta" style={deltaStyle(cell.edge)}>{fmt(cell.edge)}</td>
+                        <td className="num">{odds(cell.overOdds)}</td>
+                        <td className="num">{odds(cell.underOdds)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        ))}
       </div>
 
       <div className="panels">
