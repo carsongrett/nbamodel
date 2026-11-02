@@ -49,7 +49,7 @@ A lower divisor moves the projection more. `10000` is the workbook’s way to tu
 
 8. **Grading.** The sheet graded a win when the projection and the actual finished on the same side of the line, and it fell through to Push when the projection equaled the line. A projection equal to the line is now **no pick**. Actual equal to the line is still a push. DNPs and games that are not final, or final games missing a stat, are flagged separately and are not wins, losses, or voids. No sportsbook void rule is applied. Rows 67–72 only counted results whose edge cleared 4, 1, or 3 points. That filter is not carried forward. Win rate is wins / (wins + losses). Mean absolute error is the average of `|actual − saved projection|`, excluding DNPs and unresolved games.
 
-Pregame projection, line, odds, and timestamp are whatever Run Model last saved. A later refresh stores Basketball Reference daily leaders for games already on the desk, and a later Run Model does not replace those saved rows after actuals exist. History is the page that compares those saved rows with the results. If no pregame row was saved, a postgame number is not invented.
+Pregame projection, line, odds, and timestamp are whatever Run Model last saved. The same click stores Basketball Reference daily leaders for games already on the desk, and it does not replace those saved rows after actuals exist. If a source fails, that click stops and the last saved slate stays. History is the page that compares those saved rows with the results. If no pregame row was saved, a postgame number is not invented.
 
 ## Live slate
 

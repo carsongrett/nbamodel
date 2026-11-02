@@ -7,6 +7,7 @@ import { CURRENT_SEASON, emptyDatabase, type Player } from "../lib/engine.ts";
 import { applyPublicPages, stripSample, type FetchedPage, type PublicFetch } from "../lib/sources/apply.ts";
 import { applyBettingProsProbe } from "../lib/sources/apply-bettingpros.ts";
 import { fetchBettingProsDay, parseGameMarket, type ProbeResult } from "../lib/sources/bettingpros.ts";
+import { collectDailySources, commitDaily } from "../lib/sources/daily-run.ts";
 import { parseEnvText, readProjectEnv } from "../lib/sources/env-file.ts";
 import { parseSportsLine } from "../lib/sources/parsers.ts";
 import { canonicalTeam } from "../lib/sources/teams.ts";
@@ -328,7 +329,7 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
   assert.equal(unparsedUrls.length, 2);
 
   const stuck: string[] = [];
-  await fetchBettingProsDay("2026-11-02", async (url) => {
+  const stuckRun = await fetchBettingProsDay("2026-11-02", async (url) => {
     stuck.push(url);
     if (url.includes("/events")) {
       return { ok: true, status: 200, text: async () => JSON.stringify({ events: [{ id: 10, home: "LAL", visitor: "TOR" }] }) };
@@ -336,7 +337,9 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
     const marketId = Number(new URL(url).searchParams.get("market_id"));
     return { ok: true, status: 200, text: async () => offerBody(marketId, 1, 5, 10) };
   });
-  assert.equal(stuck.filter((url) => url.includes("page=2")).length, 3);
+  assert.equal(stuckRun.state, "error");
+  assert.match(stuckRun.message, /page 1/);
+  assert.equal(stuck.filter((url) => url.includes("page=2")).length, 1);
   assert.equal(stuck.some((url) => url.includes("page=3")), false);
 
   const ambiguous: ProbeResult = {
@@ -389,4 +392,68 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
   if (previous == null) delete process.env.BETTINGPROS_API_KEY;
   else process.env.BETTINGPROS_API_KEY = previous;
   assert.equal(failed("down").ok, false);
+});
+
+test("the first failed source stops the click and does not save today's slate", async () => {
+  const previous = process.env.BETTINGPROS_API_KEY;
+  process.env.BETTINGPROS_API_KEY = "test-key";
+  try {
+    const oddsUrls: string[] = [];
+    const oddsDown = await collectDailySources("2026-11-02", retrievedAt, async (url) => {
+      oddsUrls.push(url);
+      if (url.includes("/events")) return { ok: false, status: 429, text: async () => "" };
+      return { ok: true, status: 200, text: async () => "2026-27" };
+    });
+    assert.equal(oddsDown.ok, false);
+    if (!oddsDown.ok) {
+      assert.equal(oddsDown.source, "BettingPros");
+      assert.match(oddsDown.detail, /429/);
+    }
+    assert.equal(oddsUrls.length, 1);
+    const kept = commitDaily(emptyDatabase(), "2026-11-02", oddsDown);
+    assert.equal(kept.db, undefined);
+    assert.match(kept.message, /Today's slate was not saved/);
+
+    const urls: string[] = [];
+    const usageDown = await collectDailySources("2026-11-02", retrievedAt, async (url) => {
+      urls.push(url);
+      if (url.includes("/events")) return { ok: true, status: 200, text: async () => JSON.stringify({ events: [] }) };
+      if (url.includes("NBA_2027_advanced")) return { ok: false, status: 429, text: async () => "" };
+      return { ok: true, status: 200, text: async () => "2026-27" };
+    });
+    assert.equal(usageDown.ok, false);
+    if (!usageDown.ok) assert.equal(usageDown.source, "Basketball Reference usage");
+    assert.equal(urls.some((url) => url.includes("per_game")), false);
+    assert.equal(urls.some((url) => url.includes("sportsline")), false);
+    assert.equal(urls.some((url) => url.includes("hashtagbasketball")), false);
+
+    const spreadUrls: string[] = [];
+    const spreadDown = await fetchBettingProsDay("2026-11-02", async (url) => {
+      spreadUrls.push(url);
+      if (url.includes("/events")) {
+        return { ok: true, status: 200, text: async () => JSON.stringify({ events: [{ id: 10, home: "LAL", visitor: "TOR" }] }) };
+      }
+      const marketId = Number(new URL(url).searchParams.get("market_id"));
+      if (marketId === 129) return { ok: false, status: 500, text: async () => "" };
+      return { ok: true, status: 200, text: async () => offerBody(marketId, 1, 1, 22.5) };
+    });
+    assert.equal(spreadDown.state, "error");
+    assert.match(spreadDown.message, /spread/);
+    assert.equal(spreadUrls.some((url) => url.includes("market_id=128")), false);
+
+    const hollow = await collectDailySources("2026-11-02", retrievedAt, async (url) => {
+      if (url.includes("/events")) return { ok: true, status: 200, text: async () => JSON.stringify({ events: [] }) };
+      return { ok: true, status: 200, text: async () => "2026-27" };
+    });
+    assert.equal(hollow.ok, true);
+    if (hollow.ok) {
+      const unsaved = commitDaily(emptyDatabase(), "2026-11-02", hollow);
+      assert.equal(unsaved.db, undefined);
+      assert.match(unsaved.message, /pace/);
+      assert.match(unsaved.message, /not saved/);
+    }
+  } finally {
+    if (previous == null) delete process.env.BETTINGPROS_API_KEY;
+    else process.env.BETTINGPROS_API_KEY = previous;
+  }
 });

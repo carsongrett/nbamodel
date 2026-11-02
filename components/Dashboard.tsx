@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Settings, SlateView, Stat } from "../lib/engine";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
-import RunModelDialog from "./RunModelDialog";
 import Trace from "./Trace";
 
 type Payload = {
@@ -97,13 +96,10 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   const [kind, setKind] = useState("projections");
   const [importText, setImportText] = useState("");
   const [aboutOpen, setAboutOpen] = useState(false);
-  const [runOpen, setRunOpen] = useState(false);
 
   useEffect(() => {
     if (window.location.hash === "#about") setAboutOpen(true);
   }, []);
-
-  const liveLoadStarted = useRef(false);
 
   useEffect(() => {
     let cancel = false;
@@ -113,37 +109,11 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       if (cancel) return;
       setPayload(body);
       if (body.slate) setSettings(body.slate.settings);
-      const games = body.slate?.games ?? [];
-      const hasLive = games.some((game) => game.gameId.includes("|"));
       if (!response.ok) {
         setStatus(body.error || "The slate could not be loaded.");
         return;
       }
-      if (!hasLive && !liveLoadStarted.current) {
-        liveLoadStarted.current = true;
-        setBusy(true);
-        setStatus("Loading today's games…");
-        try {
-          const refresh = await fetch("/api/sources", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ date: initialDate }),
-          });
-          const refreshed = (await refresh.json()) as Payload;
-          if (cancel) return;
-          if (refreshed.slate) {
-            setPayload(refreshed);
-            setSettings(refreshed.slate.settings);
-          }
-          const errors = refreshed.messages?.filter((item) => item.level === "error") ?? [];
-          const lead = refreshed.error || refreshed.message || "Today's slate loaded.";
-          setStatus(errors.length ? `${lead} ${errors.length} item errors are listed below.` : lead);
-        } finally {
-          if (!cancel) setBusy(false);
-        }
-        return;
-      }
-      if (body.slate && body.slate.rows.length === 0) setStatus(`No ${initialDate} players stored. Refresh games loads the public slate for that date.`);
+      if (body.slate && body.slate.rows.length === 0) setStatus(`No ${initialDate} players stored. Run Model loads today and saves the slate.`);
       else setStatus(`Showing ${body.slate?.rows.length ?? 0} players for ${initialDate}.`);
     })();
     return () => {
@@ -195,7 +165,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
           <p className="eyebrow">2026–27 season</p>
           <h1>Today</h1>
           <DeskNav current="today" />
-          <p className="sub">{slateLabel(initialDate)}. The board is a live preview. Run Model saves the projection and the line that History grades.</p>
+          <p className="sub">{slateLabel(initialDate)}. Run Model loads the sites and saves this slate. If a source fails, the click stops and the last save stays.</p>
         </div>
         <div className="top-actions">
           <button className="about-open" type="button" aria-haspopup="dialog" aria-expanded={aboutOpen} onClick={() => setAboutOpen(true)}>?</button>
@@ -234,9 +204,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
             {STATS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
         </label>
-        <button className="primary" type="button" disabled={busy} aria-haspopup="dialog" aria-expanded={runOpen} onClick={() => setRunOpen(true)}>Run Model</button>
-        <button className="secondary" type="button" disabled={busy} onClick={() => void post("/api/sources", {}, "Loading games…")}>Refresh games</button>
-        <button className="ghost" type="button" disabled={busy} onClick={() => void post("/api/sources/bettingpros", {}, "Checking BettingPros…")}>Check BettingPros</button>
+        <button className="primary" type="button" disabled={busy} onClick={() => void post("/api/model", {}, "Running the model…")}>Run Model</button>
         <button className="ghost" type="button" disabled={busy} onClick={() => void post("/api/research", {}, "Requesting research…")}>Research Slate</button>
       </div>
 
@@ -259,7 +227,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       <div className="table-wrap">
         <table>
           <caption className="meta" style={{ captionSide: "bottom", padding: 10 }}>
-            Delta is the projection minus the line. Green is above the line and red is below it. {STATS.find((item) => item.id === stat)?.label}. Refresh games updates the preview. Run Model is what gets saved.
+            Delta is the projection minus the line. Green is above the line and red is below it. {STATS.find((item) => item.id === stat)?.label}. Run Model is the save History grades.
           </caption>
           <thead>
             <tr>
@@ -383,14 +351,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
         </section>
       </div>
       {aboutOpen ? <AboutDesk onClose={() => setAboutOpen(false)} /> : null}
-      {runOpen ? (
-        <RunModelDialog
-          dateLabel={slateLabel(date)}
-          busy={busy}
-          onClose={() => setRunOpen(false)}
-          onConfirm={() => { setRunOpen(false); void post("/api/model", {}, "Saving the pregame record…"); }}
-        />
-      ) : null}
     </main>
   );
 }

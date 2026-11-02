@@ -25,7 +25,7 @@ export function bettingProsAvailability(): { state: "ready" | "setup_needed"; me
   if (fromProcess) {
     return {
       state: "ready",
-      message: "BettingPros key is set. A refresh loads today's events, then consensus points, rebounds, and points-plus-rebounds lines. Further pages run only after the first offers page parses, and the desk stops at 40 calls.",
+      message: "BettingPros key is set. Run Model loads today's events, lines, spread, and total. The first failed source stops the click, and the desk stops at 40 calls.",
     };
   }
   if (!diskKeyAllowed()) {
@@ -38,7 +38,7 @@ export function bettingProsAvailability(): { state: "ready" | "setup_needed"; me
   if (report.key) {
     return {
       state: "ready",
-      message: `BettingPros key was read from ${report.source} in ${report.directory}. Refresh games loads today's lines. A server restart is not required.`,
+      message: `BettingPros key was read from ${report.source} in ${report.directory}. Run Model loads today's lines. A server restart is not required.`,
     };
   }
   return { state: "setup_needed", message: `${bettingProsKeyIssue(report)} No odds call is made.` };
@@ -359,7 +359,14 @@ export async function fetchBettingProsDay(date: string, fetchImpl?: FetchLike): 
         break;
       }
       const response = await pull(event.id, marketId, 1);
-      if (!response.ok) continue;
+      if (!response.ok) {
+        const which = marketId === SPREAD_MARKET_ID ? "spread" : "total";
+        stopped = response.status
+          ? `BettingPros ${which} returned HTTP ${response.status}.`
+          : `BettingPros ${which} failed: ${response.body}`;
+        halt = true;
+        break;
+      }
       const line = parseGameMarket(response.body, marketId, event.home);
       if (line == null) continue;
       if (marketId === SPREAD_MARKET_ID) event.spread = line;
@@ -394,6 +401,7 @@ export async function fetchBettingProsDay(date: string, fetchImpl?: FetchLike): 
         }
         if (page > 1 && parsed.page === 1) {
           stopped = "Paging stopped because an offers page still reported page 1.";
+          halt = true;
           break;
         }
         if (totalPages == null) totalPages = parsed.totalPages ?? 1;
@@ -405,11 +413,20 @@ export async function fetchBettingProsDay(date: string, fetchImpl?: FetchLike): 
     if (halt) break;
   }
 
+  if (stopped) {
+    return {
+      state: "error",
+      message: stopped,
+      calls,
+      events: events.events,
+      offers,
+      furtherPages: unread,
+    };
+  }
   const lined = events.events.filter((event) => event.spread != null && event.total != null).length;
-  const tail = stopped ? ` ${stopped}` : "";
   return {
     state: "parsed",
-    message: `Loaded ${events.events.length} events and ${offers.length} consensus lines for ${date}. Game total and spread are in for ${lined} events.${tail}`,
+    message: `Loaded ${events.events.length} events and ${offers.length} consensus lines for ${date}. Game total and spread are in for ${lined} events.`,
     calls,
     events: events.events,
     offers,

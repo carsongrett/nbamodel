@@ -141,9 +141,9 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
           <h2>Nothing to grade yet</h2>
           <p>History starts the morning after a slate is saved.</p>
           <ol>
-            <li>On Today, Refresh games loads the board. That is only the preview.</li>
-            <li>Run Model saves the projection, the line, and the odds.</li>
-            <li>The next day’s Refresh games writes the results for games already on the desk. They show up here.</li>
+            <li>On Today, Run Model loads the sites and saves the projection, the line, and the odds.</li>
+            <li>If a source fails, that click stops and the last save stays.</li>
+            <li>The next day’s Run Model writes results for games already on the desk. They show up here.</li>
           </ol>
         </section>
       ) : (
