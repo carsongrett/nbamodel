@@ -130,7 +130,14 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date, ...body }),
       });
-      const payloadBody = (await response.json()) as Payload;
+      const text = await response.text();
+      let payloadBody: Payload;
+      try {
+        payloadBody = text ? JSON.parse(text) as Payload : {};
+      } catch {
+        setStatus(response.ok ? "Done." : `Request failed (${response.status}).`);
+        return;
+      }
       if (payloadBody.slate) {
         setPayload(payloadBody);
         setSettings(payloadBody.slate.settings);
@@ -281,7 +288,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                           const next = event.target.value.trim();
                           const current = cell.line == null ? "" : String(cell.line);
                           if (next === current) return;
-                          void post("/api/lines", { playerId: row.playerId, gameId: row.gameId, stat, line: next }, "Saving the line…");
+                          void put("/api/lines", { playerId: row.playerId, gameId: row.gameId, stat, line: next }, "Saving the line…");
                         }}
                       />
                     )}
