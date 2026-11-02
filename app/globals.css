@@ -40,6 +40,7 @@ h1 { margin: 0; font-size: 34px; line-height: 1; }
 
 label { display: grid; gap: 4px; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; color: var(--muted); }
 input, select { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-height: 38px; }
+.line-input { width: 5.5rem; min-height: 32px; padding: 4px 6px; text-align: right; }
 button.primary, button.secondary, button.ghost { border-radius: 999px; padding: 8px 14px; min-height: 38px; border: 1px solid transparent; }
 button.primary { background: var(--accent); color: var(--accent-ink); }
 button.secondary { background: var(--ink); color: #f6f1e8; }

@@ -1,4 +1,4 @@
-import { CURRENT_SEASON, upsertByKey, type Database, type Game, type IdMap, type ModelMessage, type PropLine, type Stat } from "../engine";
+import { CURRENT_SEASON, idsEqual, upsertByKey, type Database, type Game, type IdMap, type ModelMessage, type PropLine, type Stat } from "../engine";
 import { POINTS_MARKET_ID, POINTS_REBOUNDS_MARKET_ID, REBOUNDS_MARKET_ID, type ProbeResult } from "./bettingpros";
 import { normalizePersonName } from "./names";
 import { canonicalTeam, matchupGameId } from "./teams";
@@ -53,6 +53,8 @@ export function applyBettingProsProbe(db: Database, date: string, probe: ProbeRe
       unmapped++;
       continue;
     }
+    const manual = lines.find((row) => idsEqual(row.playerId, playerId) && idsEqual(row.gameId, gameId) && row.stat === stat && row.source === "manual");
+    if (manual) continue;
     if (!mapped && (offer.playerId || offer.name)) {
       const row: IdMap = {
         source: "bettingpros",

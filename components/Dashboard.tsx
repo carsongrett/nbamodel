@@ -165,7 +165,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
           <p className="eyebrow">2026–27 season</p>
           <h1>Today</h1>
           <DeskNav current="today" />
-          <p className="sub">{slateLabel(initialDate)}. Run Model loads the sites and saves this slate. If a source fails, the click stops and the last save stays.</p>
+          <p className="sub">{slateLabel(initialDate)}. Run Model loads the other sites first, then BettingPros. If BettingPros fails, the board stays up and you can type the line.</p>
         </div>
         <div className="top-actions">
           <button className="about-open" type="button" aria-haspopup="dialog" aria-expanded={aboutOpen} onClick={() => setAboutOpen(true)}>?</button>
@@ -227,7 +227,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       <div className="table-wrap">
         <table>
           <caption className="meta" style={{ captionSide: "bottom", padding: 10 }}>
-            Delta is the projection minus the line. Green is above the line and red is below it. {STATS.find((item) => item.id === stat)?.label}. Run Model is the save History grades.
+            Delta is the projection minus the line. Green is above the line and red is below it. {STATS.find((item) => item.id === stat)?.label}. Type a line to use it in the formula. A line you type stays when Run Model loads BettingPros again. Clear the box to remove it. Run Model is the save History grades.
           </caption>
           <thead>
             <tr>
@@ -265,7 +265,27 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                       </div>
                     ) : null}
                   </td>
-                  <td className="num">{fmt(cell.line, 1)}</td>
+                  <td className="num">
+                    {row.locked ? fmt(cell.line, 1) : (
+                      <input
+                        className="line-input"
+                        type="number"
+                        inputMode="decimal"
+                        step="0.5"
+                        min="0"
+                        aria-label={`${row.playerName} ${stat} line`}
+                        defaultValue={cell.line ?? ""}
+                        key={`${key}|${stat}|${cell.line ?? ""}`}
+                        disabled={busy}
+                        onBlur={(event) => {
+                          const next = event.target.value.trim();
+                          const current = cell.line == null ? "" : String(cell.line);
+                          if (next === current) return;
+                          void post("/api/lines", { playerId: row.playerId, gameId: row.gameId, stat, line: next }, "Saving the line…");
+                        }}
+                      />
+                    )}
+                  </td>
                   <td className="num delta" style={deltaStyle(cell.edge)}>{fmt(cell.edge)}</td>
                   <td className="num">{odds(cell.overOdds)}</td>
                   <td className="num">{odds(cell.underOdds)}</td>

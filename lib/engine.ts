@@ -1412,6 +1412,36 @@ export function setMinutesOverride(
   return { db: { ...db, overrides: result.rows } };
 }
 
+export function setPropLine(
+  db: Database,
+  playerId: string,
+  gameId: string,
+  stat: Stat,
+  line: number | null,
+  savedAt: string,
+): { db: Database; error?: string } {
+  if (!db.players.some((p) => idsEqual(p.playerId, playerId))) return { db, error: "Unknown player id." };
+  if (!db.games.some((g) => idsEqual(g.gameId, gameId))) return { db, error: "Unknown game id." };
+  if (!STATS.includes(stat)) return { db, error: "Unknown stat." };
+  if (locked(db, playerId, gameId)) return { db, error: "Results are already stored. The line was not changed." };
+  const same = (row: PropLine) => idsEqual(row.playerId, playerId) && idsEqual(row.gameId, gameId) && row.stat === stat;
+  if (line == null) return { db: { ...db, lines: db.lines.filter((row) => !same(row)) } };
+  if (!Number.isFinite(line) || line <= 0) return { db, error: "The line must be a positive number." };
+  const prior = db.lines.find(same);
+  const row: PropLine = {
+    playerId,
+    gameId,
+    stat,
+    season: CURRENT_SEASON,
+    line,
+    overOdds: prior?.overOdds ?? null,
+    underOdds: prior?.underOdds ?? null,
+    source: "manual",
+    sourceTimestamp: savedAt,
+  };
+  return { db: { ...db, lines: upsertByKey(db.lines, [row], (item) => `${item.playerId}|${item.gameId}|${item.stat}`).rows } };
+}
+
 type Eval = {
   points: StatProjection;
   rebounds: StatProjection;

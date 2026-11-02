@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { CURRENT_SEASON, emptyDatabase, type Player } from "../lib/engine.ts";
+import { CURRENT_SEASON, emptyDatabase, setPropLine, type Player } from "../lib/engine.ts";
 import { applyPublicPages, stripSample, type FetchedPage, type PublicFetch } from "../lib/sources/apply.ts";
 import { applyBettingProsProbe } from "../lib/sources/apply-bettingpros.ts";
 import { fetchBettingProsDay, parseGameMarket, type ProbeResult } from "../lib/sources/bettingpros.ts";
@@ -400,6 +400,31 @@ function espnCard(tip: string, away: string, home: string, awaySpread: string, h
 
 const espnHtml = `<div data-testid="betSixPackTable">${espnCard("2026-11-03T00:00Z", "okc", "cle", "+4.5", "-4.5", "229.5")}${espnCard("2026-12-25T17:00Z", "ny", "wsh", "+1.5", "-1.5", "220")}</div>`;
 
+test("a typed line stays when bettingpros loads again", () => {
+  const gameId = "2026-11-02|TOR@LAL";
+  const player: Player = { playerId: "doncilu01", displayName: "Luka Doncic", teamId: "LAL", position: "PG", season: CURRENT_SEASON };
+  const start = {
+    ...emptyDatabase(),
+    players: [player],
+    games: [{ gameId, season: CURRENT_SEASON, gameDate: "2026-11-02", homeTeamId: "LAL", awayTeamId: "TOR", status: "scheduled" as const }],
+  };
+  const typed = setPropLine(start, player.playerId, gameId, "points", 24.5, retrievedAt);
+  assert.equal(typed.db.lines[0]?.source, "manual");
+  const probe: ProbeResult = {
+    state: "parsed",
+    message: "ok",
+    calls: [],
+    events: [{ id: "10", home: "LAL", away: "TOR" }],
+    offers: [{ eventId: "10", playerId: "55", name: "Luka Doncic", marketId: 156, line: 22.5, overOdds: -110, underOdds: -105 }],
+    furtherPages: 0,
+  };
+  const loaded = applyBettingProsProbe(typed.db, "2026-11-02", probe, retrievedAt);
+  assert.equal(loaded.db.lines.find((line) => line.stat === "points")?.line, 24.5);
+  assert.equal(loaded.db.lines.find((line) => line.stat === "points")?.source, "manual");
+  const cleared = setPropLine(loaded.db, player.playerId, gameId, "points", null, retrievedAt);
+  assert.equal(cleared.db.lines.length, 0);
+});
+
 test("espn odds page supplies the home spread and the total", () => {
   const parsed = parseEspnOdds(espnHtml, "2026-11-02");
   assert.equal(parsed.parsed, true);
@@ -445,7 +470,19 @@ test("the first failed source stops the click and does not save today's slate", 
     });
     assert.equal(propsDown.ok, false);
     if (!propsDown.ok) assert.equal(propsDown.source, "BettingPros");
-    assert.equal(props.some((url) => url.includes("basketball-reference")), false);
+    const eventsAt = props.findIndex((url) => url.includes("/events"));
+    const publicAt = props.findIndex((url) => url.includes("sportsline"));
+    assert.ok(publicAt >= 0 && eventsAt > publicAt);
+    if (!propsDown.ok && "kept" in propsDown) {
+      const board = commitDaily(emptyDatabase(), "2026-11-02", {
+        ...propsDown,
+        fetched: bundle(),
+        espn: [{ away: "TOR", home: "LAL", spread: -3.5, total: 220 }],
+      });
+      assert.equal(board.db?.pregame.length, 0);
+      assert.equal(board.db?.players.some((player) => player.playerId === "doncilu01"), true);
+      assert.match(board.message, /Type a line/);
+    }
 
     const urls: string[] = [];
     const usageDown = await collectDailySources("2026-11-02", retrievedAt, async (url) => {
@@ -458,6 +495,7 @@ test("the first failed source stops the click and does not save today's slate", 
     assert.equal(usageDown.ok, false);
     if (!usageDown.ok) assert.equal(usageDown.source, "Basketball Reference usage");
     assert.equal(urls.some((url) => url.includes("per_game")), false);
+    assert.equal(urls.some((url) => url.includes("/events")), false);
     assert.equal(urls.some((url) => url.includes("sportsline")), false);
     assert.equal(urls.some((url) => url.includes("hashtagbasketball")), false);
 

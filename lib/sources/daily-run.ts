@@ -16,8 +16,17 @@ export type PageResponse = { ok: boolean; status: number; text: () => Promise<st
 export type PageFetch = (url: string, init: { headers: Record<string, string> }) => Promise<PageResponse>;
 
 export type DailyFailure = { ok: false; source: string; detail: string };
+export type DailyKept = {
+  ok: false;
+  kept: true;
+  source: "BettingPros";
+  detail: string;
+  fetched: PublicFetch;
+  espn: EspnGameOdds[];
+  savedAt: string;
+};
 export type DailySuccess = { ok: true; fetched: PublicFetch; odds: ProbeResult; espn: EspnGameOdds[]; savedAt: string };
-export type DailyCollected = DailySuccess | DailyFailure;
+export type DailyCollected = DailySuccess | DailyFailure | DailyKept;
 
 function failed(source: string, detail: string): DailyFailure {
   return { ok: false, source, detail };
@@ -49,8 +58,6 @@ export async function collectDailySources(date: string, savedAt: string, fetchIm
   });
   const espn = await fetchEspnOdds(date, fetchPage);
   if (!espn.ok) return failed("ESPN odds", espn.detail);
-  const odds = await fetchBettingProsDay(date, fetchPage);
-  if (odds.state !== "parsed") return failed("BettingPros", odds.message);
 
   const htmlHeaders = { accept: "text/html", "user-agent": "nbamodel personal desk" };
   const usage = await pull(fetchPage, "Basketball Reference usage", ADVANCED_URL, htmlHeaders);
@@ -87,22 +94,21 @@ export async function collectDailySources(date: string, savedAt: string, fetchIm
   const hashtagSeason = seasonPage("Hashtag defense vs position", hashtag.html);
   if (hashtagSeason) return hashtagSeason;
 
-  return {
-    ok: true,
-    savedAt,
-    odds,
-    espn: espn.games,
-    fetched: {
-      advanced: page(ADVANCED_URL, usage.html),
-      perGame: page(PER_GAME_URL, perGame.html),
-      pace: page(LEAGUE_URL, pace.html),
-      last15,
-      actuals: page(dailyLeadersUrl(date), boxScores.html),
-      sportsline: page(SPORTSLINE_URL, sportsline.html),
-      hashtag: page(HASHTAG_URL, hashtag.html),
-      retrievedAt: savedAt,
-    },
+  const fetched: PublicFetch = {
+    advanced: page(ADVANCED_URL, usage.html),
+    perGame: page(PER_GAME_URL, perGame.html),
+    pace: page(LEAGUE_URL, pace.html),
+    last15,
+    actuals: page(dailyLeadersUrl(date), boxScores.html),
+    sportsline: page(SPORTSLINE_URL, sportsline.html),
+    hashtag: page(HASHTAG_URL, hashtag.html),
+    retrievedAt: savedAt,
   };
+  const odds = await fetchBettingProsDay(date, fetchPage);
+  if (odds.state !== "parsed") {
+    return { ok: false, kept: true, source: "BettingPros", detail: odds.message, fetched, espn: espn.games, savedAt };
+  }
+  return { ok: true, savedAt, odds, espn: espn.games, fetched };
 }
 
 export function commitDaily(
@@ -110,7 +116,7 @@ export function commitDaily(
   date: string,
   collected: DailyCollected,
 ): { db?: Database; message: string; messages: ModelMessage[] } {
-  if (!collected.ok) {
+  if (!collected.ok && !("kept" in collected)) {
     return {
       message: `${collected.source} failed. Today's slate was not saved.`,
       messages: [{
@@ -130,6 +136,17 @@ export function commitDaily(
     };
   }
   const espnApplied = applyEspnOdds(applied.db, date, collected.espn, collected.savedAt);
+  if (!collected.ok) {
+    return {
+      db: espnApplied.db,
+      message: "BettingPros failed. The board has the other sources, and today's slate was not saved. Type a line to finish the formula.",
+      messages: [
+        ...applied.messages,
+        ...espnApplied.messages,
+        { level: "error", playerId: null, message: `BettingPros failed: ${collected.detail} No later source was called.` },
+      ],
+    };
+  }
   const oddsApplied = applyBettingProsProbe(espnApplied.db, date, collected.odds, collected.savedAt);
   const ran = applyModelRun(oddsApplied.db, date, collected.savedAt);
   const messages = [...applied.messages, ...espnApplied.messages, ...oddsApplied.messages, ...ran.messages];
