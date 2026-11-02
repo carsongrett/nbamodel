@@ -234,3 +234,8 @@ revoke all on table
   teams, players, games, source_id_map, outside_projections, prop_lines, player_rates,
   dvp, pace, opp_rebounds, vegas, settings, overrides, pregame, actuals, research_findings
 from anon, authenticated;
+
+grant usage on schema public to service_role;
+grant all on all tables in schema public to service_role;
+grant all on all sequences in schema public to service_role;
+grant execute on all functions in schema public to service_role;

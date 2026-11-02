@@ -51,7 +51,7 @@ Nothing is scheduled. Run Model, imports, Research Slate, and the source buttons
 
 ## Database
 
-Run `supabase/migrations/20261101120000_init.sql` in the Supabase SQL editor. It creates the tables, unique keys, the 2026–27 checks, a trigger that refuses to change a pregame row after actuals exist, and row level security with no policies. `anon` and `authenticated` are revoked. The service role bypasses RLS and is the only app connection.
+Run `supabase/migrations/20261101120000_init.sql` in the Supabase SQL editor. It creates the tables, unique keys, the 2026–27 checks, a trigger that refuses to change a pregame row after actuals exist, and row level security with no policies. `anon` and `authenticated` are revoked. The same script grants those tables to `service_role`, which is the key on the server. A project created before that grant can run `supabase/migrations/20261102130000_service_role.sql` once. The service role bypasses RLS and is the only app connection.
 
 The app also refuses those pregame writes before they reach the database.
 
