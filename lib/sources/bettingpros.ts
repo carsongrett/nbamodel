@@ -25,7 +25,7 @@ export function bettingProsAvailability(): { state: "ready" | "setup_needed"; me
   if (fromProcess) {
     return {
       state: "ready",
-      message: "BettingPros key is set. Run Model loads today's consensus points and rebounds lines. Points plus rebounds is the two projections added together, and that line is not requested. The spread and total come from ESPN. The first failed source stops the click, and the desk stops at 40 calls.",
+      message: "BettingPros key is set. Lines loads today's consensus points and rebounds. Points plus rebounds is the two projections added together, and that line is not requested. A typed number is replaced until results are stored. The spread and total come from Projections, which reads ESPN. The desk stops at 40 calls.",
     };
   }
   if (!diskKeyAllowed()) {
@@ -38,7 +38,7 @@ export function bettingProsAvailability(): { state: "ready" | "setup_needed"; me
   if (report.key) {
     return {
       state: "ready",
-      message: `BettingPros key was read from ${report.source} in ${report.directory}. Run Model loads today's lines. A server restart is not required.`,
+      message: `BettingPros key was read from ${report.source} in ${report.directory}. Lines loads today's points and rebounds. A server restart is not required.`,
     };
   }
   return { state: "setup_needed", message: `${bettingProsKeyIssue(report)} No odds call is made.` };

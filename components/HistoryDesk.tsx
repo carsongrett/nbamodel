@@ -126,7 +126,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
           <p className="eyebrow">2026–27 season</p>
           <h1>History</h1>
           <DeskNav current="history" />
-          <p className="sub">Saved projections against the results. The grade uses the line from Run Model.</p>
+          <p className="sub">Saved projections against the results. The grade uses the line stored before the game.</p>
         </div>
         <div className="top-actions">
           <button className="about-open" type="button" aria-haspopup="dialog" aria-expanded={aboutOpen} onClick={() => setAboutOpen(true)}>?</button>
@@ -141,9 +141,9 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
           <h2>Nothing to grade yet</h2>
           <p>History starts the morning after a slate is saved.</p>
           <ol>
-            <li>On Today, Run Model loads the sites and saves the projection, the line, and the odds.</li>
+            <li>On Today, Projections loads the public sites. Lines, or a number you type, stores that player in History.</li>
             <li>If a source fails, that click stops and the last save stays.</li>
-            <li>The next day’s Run Model writes results for games already on the desk. They show up here.</li>
+            <li>The next day’s Projections writes results for games already on the desk. They show up here. Saved projections and lines stay.</li>
           </ol>
         </section>
       ) : (

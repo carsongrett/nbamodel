@@ -53,8 +53,8 @@ export function applyBettingProsProbe(db: Database, date: string, probe: ProbeRe
       unmapped++;
       continue;
     }
-    const manual = lines.find((row) => idsEqual(row.playerId, playerId) && idsEqual(row.gameId, gameId) && row.stat === stat && row.source === "manual");
-    if (manual) continue;
+    const finished = db.actuals.some((row) => idsEqual(row.playerId, playerId) && idsEqual(row.gameId, gameId));
+    if (finished) continue;
     if (!mapped && (offer.playerId || offer.name)) {
       const row: IdMap = {
         source: "bettingpros",

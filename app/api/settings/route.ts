@@ -19,7 +19,7 @@ export async function PUT(request: Request) {
     return updateDatabase(async (db) => {
       const updated = updateSettings(db, patch);
       if (updated.error) return { result: fail(updated.error) };
-      return { db: updated.db, result: { ...slatePayload(updated.db, date), message: "Adjustment settings saved. Run Model to store a new pregame projection." } };
+      return { db: updated.db, result: { ...slatePayload(updated.db, date), message: "Adjustment settings saved. Projections stores a new pregame projection when a line exists." } };
     });
   });
 }

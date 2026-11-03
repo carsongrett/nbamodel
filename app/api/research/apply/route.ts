@@ -17,7 +17,7 @@ export async function POST(request: Request) {
         db: applied.db,
         result: {
           ...slatePayload(applied.db, date),
-          message: "Minutes suggestion saved as an override. The pregame projection was not changed. Run Model to use it.",
+          message: "Minutes suggestion saved as an override. The pregame projection was not changed.",
         },
       };
     });

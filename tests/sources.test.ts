@@ -7,7 +7,7 @@ import { applyModelRun, buildSlate, CURRENT_SEASON, emptyDatabase, setPropLine, 
 import { applyPublicPages, stripSample, type FetchedPage, type PublicFetch } from "../lib/sources/apply.ts";
 import { applyBettingProsProbe } from "../lib/sources/apply-bettingpros.ts";
 import { fetchBettingProsDay, parseGameMarket, type ProbeResult } from "../lib/sources/bettingpros.ts";
-import { collectDailySources, commitDaily } from "../lib/sources/daily-run.ts";
+import { collectLines, collectProjectionSources, commitLines, commitProjections } from "../lib/sources/daily-run.ts";
 import { applyEspnOdds, parseEspnOdds } from "../lib/sources/espn.ts";
 import { parseEnvText, readProjectEnv } from "../lib/sources/env-file.ts";
 import { parseSportsLine } from "../lib/sources/parsers.ts";
@@ -503,15 +503,26 @@ test("history stores a typed line and leaves out a player with no line", () => {
   assert.equal(clearedBoard.rows.find((row) => row.playerId === luka.playerId)?.stats.points.savedAt, null);
 });
 
-test("a typed line stays when bettingpros loads again", () => {
+test("lines replace a typed number before the game and leave it after actuals", () => {
   const gameId = "2026-11-02|TOR@LAL";
   const player: Player = { playerId: "doncilu01", displayName: "Luka Doncic", teamId: "LAL", position: "PG", season: CURRENT_SEASON };
   const start = {
     ...emptyDatabase(),
     players: [player],
     games: [{ gameId, season: CURRENT_SEASON, gameDate: "2026-11-02", homeTeamId: "LAL", awayTeamId: "TOR", status: "scheduled" as const }],
+    projections: [{
+      playerId: player.playerId,
+      gameId,
+      source: "sportsline",
+      season: CURRENT_SEASON,
+      points: 32,
+      rebounds: 8,
+      minutes: 36,
+      sourceTimestamp: retrievedAt,
+    }],
   };
   const typed = setPropLine(start, player.playerId, gameId, "points", 24.5, retrievedAt);
+  assert.equal(typed.stored, true);
   assert.equal(typed.db.lines[0]?.source, "manual");
   const probe: ProbeResult = {
     state: "parsed",
@@ -522,10 +533,29 @@ test("a typed line stays when bettingpros loads again", () => {
     furtherPages: 0,
   };
   const loaded = applyBettingProsProbe(typed.db, "2026-11-02", probe, retrievedAt);
-  assert.equal(loaded.db.lines.find((line) => line.stat === "points")?.line, 24.5);
-  assert.equal(loaded.db.lines.find((line) => line.stat === "points")?.source, "manual");
+  assert.equal(loaded.db.lines.find((line) => line.stat === "points")?.line, 22.5);
+  assert.equal(loaded.db.lines.find((line) => line.stat === "points")?.source, "bettingpros");
+  const savedProjection = typed.db.pregame[0]?.projection;
+  const closed = applyBettingProsProbe({
+    ...typed.db,
+    actuals: [{
+      playerId: player.playerId,
+      gameId,
+      season: CURRENT_SEASON,
+      dnp: false,
+      points: 30,
+      rebounds: 8,
+      sourceTimestamp: retrievedAt,
+    }],
+  }, "2026-11-02", probe, retrievedAt);
+  assert.equal(closed.db.lines.find((line) => line.stat === "points")?.line, 24.5);
+  assert.equal(closed.db.lines.find((line) => line.stat === "points")?.source, "manual");
+  const graded = applyModelRun(closed.db, "2026-11-02", retrievedAt);
+  assert.equal(graded.db.pregame[0]?.line, 24.5);
+  assert.equal(graded.db.pregame[0]?.projection, savedProjection);
   const cleared = setPropLine(loaded.db, player.playerId, gameId, "points", null, retrievedAt);
   assert.equal(cleared.db.lines.length, 0);
+  assert.equal(cleared.db.pregame.length, 0);
 });
 
 test("espn odds page supplies the home spread and the total", () => {
@@ -549,7 +579,7 @@ test("the first failed source stops the click and does not save today's slate", 
   const espnPage = async () => espnHtml;
   try {
     const oddsUrls: string[] = [];
-    const oddsDown = await collectDailySources("2026-11-02", retrievedAt, async (url) => {
+    const oddsDown = await collectProjectionSources("2026-11-02", retrievedAt, async (url) => {
       oddsUrls.push(url);
       if (url.includes("espn.com")) return { ok: false, status: 429, text: async () => "" };
       return { ok: true, status: 200, text: async () => "2026-27" };
@@ -560,38 +590,15 @@ test("the first failed source stops the click and does not save today's slate", 
       assert.match(oddsDown.detail, /429/);
     }
     assert.equal(oddsUrls.length, 1);
-    const kept = commitDaily(emptyDatabase(), "2026-11-02", oddsDown);
+    assert.equal(oddsUrls.some((url) => url.includes("bettingpros") || url.includes("/events")), false);
+    const kept = commitProjections(emptyDatabase(), "2026-11-02", oddsDown);
     assert.equal(kept.db, undefined);
     assert.match(kept.message, /Today's slate was not saved/);
 
-    const props: string[] = [];
-    const propsDown = await collectDailySources("2026-11-02", retrievedAt, async (url) => {
-      props.push(url);
-      if (url.includes("espn.com")) return { ok: true, status: 200, text: espnPage };
-      if (url.includes("/events")) return { ok: false, status: 429, text: async () => "" };
-      return { ok: true, status: 200, text: async () => "2026-27" };
-    });
-    assert.equal(propsDown.ok, false);
-    if (!propsDown.ok) assert.equal(propsDown.source, "BettingPros");
-    const eventsAt = props.findIndex((url) => url.includes("/events"));
-    const publicAt = props.findIndex((url) => url.includes("sportsline"));
-    assert.ok(publicAt >= 0 && eventsAt > publicAt);
-    if (!propsDown.ok && "kept" in propsDown) {
-      const board = commitDaily(emptyDatabase(), "2026-11-02", {
-        ...propsDown,
-        fetched: bundle(),
-        espn: [{ away: "TOR", home: "LAL", spread: -3.5, total: 220 }],
-      });
-      assert.equal(board.db?.pregame.length, 0);
-      assert.equal(board.db?.players.some((player) => player.playerId === "doncilu01"), true);
-      assert.match(board.message, /Type a line/);
-    }
-
     const urls: string[] = [];
-    const usageDown = await collectDailySources("2026-11-02", retrievedAt, async (url) => {
+    const usageDown = await collectProjectionSources("2026-11-02", retrievedAt, async (url) => {
       urls.push(url);
       if (url.includes("espn.com")) return { ok: true, status: 200, text: espnPage };
-      if (url.includes("/events")) return { ok: true, status: 200, text: async () => JSON.stringify({ events: [] }) };
       if (url.includes("NBA_2027_advanced")) return { ok: false, status: 429, text: async () => "" };
       return { ok: true, status: 200, text: async () => "2026-27" };
     });
@@ -602,18 +609,29 @@ test("the first failed source stops the click and does not save today's slate", 
     assert.equal(urls.some((url) => url.includes("sportsline")), false);
     assert.equal(urls.some((url) => url.includes("hashtagbasketball")), false);
 
-    const hollow = await collectDailySources("2026-11-02", retrievedAt, async (url) => {
+    const hollow = await collectProjectionSources("2026-11-02", retrievedAt, async (url) => {
       if (url.includes("espn.com")) return { ok: true, status: 200, text: espnPage };
-      if (url.includes("/events")) return { ok: true, status: 200, text: async () => JSON.stringify({ events: [] }) };
       return { ok: true, status: 200, text: async () => "2026-27" };
     });
     assert.equal(hollow.ok, true);
     if (hollow.ok) {
-      const unsaved = commitDaily(emptyDatabase(), "2026-11-02", hollow);
+      const unsaved = commitProjections(emptyDatabase(), "2026-11-02", hollow);
       assert.equal(unsaved.db, undefined);
       assert.match(unsaved.message, /pace/);
       assert.match(unsaved.message, /not saved/);
     }
+
+    const lineUrls: string[] = [];
+    const linesDown = await collectLines("2026-11-02", async (url) => {
+      lineUrls.push(url);
+      if (url.includes("/events")) return { ok: false, status: 429, text: async () => "" };
+      return { ok: true, status: 200, text: async () => "" };
+    });
+    assert.equal(linesDown.state, "error");
+    assert.equal(lineUrls.some((url) => url.includes("espn.com") || url.includes("sportsline")), false);
+    const unchanged = commitLines(emptyDatabase(), "2026-11-02", linesDown, retrievedAt);
+    assert.equal(unchanged.db, undefined);
+    assert.match(unchanged.message, /not changed/);
   } finally {
     if (previous == null) delete process.env.BETTINGPROS_API_KEY;
     else process.env.BETTINGPROS_API_KEY = previous;

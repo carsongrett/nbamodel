@@ -16,17 +16,8 @@ export type PageResponse = { ok: boolean; status: number; text: () => Promise<st
 export type PageFetch = (url: string, init: { headers: Record<string, string> }) => Promise<PageResponse>;
 
 export type DailyFailure = { ok: false; source: string; detail: string };
-export type DailyKept = {
-  ok: false;
-  kept: true;
-  source: "BettingPros";
-  detail: string;
-  fetched: PublicFetch;
-  espn: EspnGameOdds[];
-  savedAt: string;
-};
-export type DailySuccess = { ok: true; fetched: PublicFetch; odds: ProbeResult; espn: EspnGameOdds[]; savedAt: string };
-export type DailyCollected = DailySuccess | DailyFailure | DailyKept;
+export type ProjectionSuccess = { ok: true; fetched: PublicFetch; espn: EspnGameOdds[]; savedAt: string };
+export type ProjectionCollected = ProjectionSuccess | DailyFailure;
 
 function failed(source: string, detail: string): DailyFailure {
   return { ok: false, source, detail };
@@ -51,7 +42,7 @@ function page(url: string, html: string): FetchedPage {
   return { url, ok: true, html };
 }
 
-export async function collectDailySources(date: string, savedAt: string, fetchImpl?: PageFetch): Promise<DailyCollected> {
+export async function collectProjectionSources(date: string, savedAt: string, fetchImpl?: PageFetch): Promise<ProjectionCollected> {
   const fetchPage: PageFetch = fetchImpl ?? (async (url, init) => {
     const response = await fetch(url, { headers: init.headers, signal: AbortSignal.timeout(20000) });
     return { ok: response.ok, status: response.status, text: () => response.text() };
@@ -104,19 +95,15 @@ export async function collectDailySources(date: string, savedAt: string, fetchIm
     hashtag: page(HASHTAG_URL, hashtag.html),
     retrievedAt: savedAt,
   };
-  const odds = await fetchBettingProsDay(date, fetchPage);
-  if (odds.state !== "parsed") {
-    return { ok: false, kept: true, source: "BettingPros", detail: odds.message, fetched, espn: espn.games, savedAt };
-  }
-  return { ok: true, savedAt, odds, espn: espn.games, fetched };
+  return { ok: true, savedAt, espn: espn.games, fetched };
 }
 
-export function commitDaily(
+export function commitProjections(
   db: Database,
   date: string,
-  collected: DailyCollected,
+  collected: ProjectionCollected,
 ): { db?: Database; message: string; messages: ModelMessage[] } {
-  if (!collected.ok && !("kept" in collected)) {
+  if (!collected.ok) {
     return {
       message: `${collected.source} failed. Today's slate was not saved.`,
       messages: [{
@@ -136,26 +123,45 @@ export function commitDaily(
     };
   }
   const espnApplied = applyEspnOdds(applied.db, date, collected.espn, collected.savedAt);
-  if (!collected.ok) {
-    return {
-      db: espnApplied.db,
-      message: "BettingPros failed. The board has the other sources. Type a line to finish the formula and store that player in History.",
-      messages: [
-        ...applied.messages,
-        ...espnApplied.messages,
-        { level: "error", playerId: null, message: `BettingPros failed: ${collected.detail} No later source was called.` },
-      ],
-    };
-  }
-  const oddsApplied = applyBettingProsProbe(espnApplied.db, date, collected.odds, collected.savedAt);
-  const ran = applyModelRun(oddsApplied.db, date, collected.savedAt);
-  const messages = [...applied.messages, ...espnApplied.messages, ...oddsApplied.messages, ...ran.messages];
+  const ran = applyModelRun(espnApplied.db, date, collected.savedAt);
+  const messages = [...applied.messages, ...espnApplied.messages, ...ran.messages];
   const graded = messages.find((item) => item.message.startsWith("Basketball Reference leaders graded"));
   const saved = messages.find((item) => item.message.startsWith("Saved "));
   const lead = saved?.message ?? `Saved the ${date} slate.`;
   return {
     db: ran.db,
     message: graded ? `${lead} ${graded.message}` : lead,
+    messages,
+  };
+}
+
+export async function collectLines(date: string, fetchImpl?: PageFetch): Promise<ProbeResult> {
+  const fetchPage: PageFetch = fetchImpl ?? (async (url, init) => {
+    const response = await fetch(url, { headers: init.headers, signal: AbortSignal.timeout(20000) });
+    return { ok: response.ok, status: response.status, text: () => response.text() };
+  });
+  return fetchBettingProsDay(date, fetchPage);
+}
+
+export function commitLines(
+  db: Database,
+  date: string,
+  odds: ProbeResult,
+  savedAt: string,
+): { db?: Database; message: string; messages: ModelMessage[] } {
+  if (odds.state !== "parsed") {
+    return {
+      message: `BettingPros failed. ${odds.message} Today's lines were not changed.`,
+      messages: [{ level: "error", playerId: null, message: odds.message }],
+    };
+  }
+  const applied = applyBettingProsProbe(db, date, odds, savedAt);
+  const ran = applyModelRun(applied.db, date, savedAt);
+  const messages = [...applied.messages, ...ran.messages];
+  const saved = messages.find((item) => item.message.startsWith("Saved "));
+  return {
+    db: ran.db,
+    message: saved?.message ?? `Loaded BettingPros lines for ${date}.`,
     messages,
   };
 }

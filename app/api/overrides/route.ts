@@ -18,7 +18,7 @@ export async function PUT(request: Request) {
       if (updated.error) return { result: fail(updated.error) };
       return {
         db: updated.db,
-        result: { ...slatePayload(updated.db, date), message: minutes == null ? "Minutes override cleared." : "Minutes override saved. Run Model to store it in the pregame projection." },
+        result: { ...slatePayload(updated.db, date), message: minutes == null ? "Minutes override cleared." : "Minutes override saved. Projections stores it in the pregame projection when a line exists." },
       };
     });
   });
