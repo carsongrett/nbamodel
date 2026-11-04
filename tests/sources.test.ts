@@ -454,7 +454,7 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
   assert.equal(failed("down").ok, false);
 });
 
-test("bettingpros waits 500ms between offer pulls", async (t) => {
+test("bettingpros waits 1500ms between offer pulls", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const previous = process.env.BETTINGPROS_API_KEY;
   process.env.BETTINGPROS_API_KEY = "test-key";
@@ -497,7 +497,7 @@ test("bettingpros waits 500ms between offer pulls", async (t) => {
     assert.equal(urls.filter((url) => url.includes("/events")).length, 1);
     assert.equal(offerAt.length, 4);
     assert.equal(eventsAt, 0);
-    assert.deepEqual(offerAt, [0, 500, 1000, 1500]);
+    assert.deepEqual(offerAt, [0, 1500, 3000, 4500]);
     assert.equal(day.state, "parsed");
 
     const burst: string[] = [];
@@ -521,7 +521,7 @@ test("bettingpros waits 500ms between offer pulls", async (t) => {
     assert.equal(burst.some((url) => url.includes("page=2")), true);
     assert.equal(burst.some((url) => url.includes("page=3")), false);
     assert.equal(burstAt[0], burstEventsAt);
-    assert.equal(burstAt[1] - burstAt[0], 500);
+    assert.equal(burstAt[1] - burstAt[0], 1500);
     assert.equal(stopped.state, "error");
     assert.match(stopped.message, /429/);
   } finally {

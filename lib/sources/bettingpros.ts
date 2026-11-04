@@ -225,7 +225,7 @@ export function parseGameMarket(body: string, marketId: number, home: string | n
 }
 
 const MAX_BETTINGPROS_CALLS = 40;
-const OFFER_GAP_MS = 500;
+const OFFER_GAP_MS = 1500;
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
