@@ -2,6 +2,7 @@ import {
   CURRENT_SEASON,
   POSITIONS,
   defenseVsPosition,
+  mergeGame,
   opponentReboundDiffs,
   upsertByKey,
   type Actual,
@@ -165,8 +166,7 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
   };
   const ensureGame = (game: Game) => {
     const existing = games.find((row) => row.gameId === game.gameId);
-    const next = existing ? { ...game, status: existing.status === "final" ? existing.status : game.status } : game;
-    games = upsertByKey(games, [next], (row) => row.gameId).rows;
+    games = upsertByKey(games, [mergeGame(existing, game)], (row) => row.gameId).rows;
   };
   const remember = (sourceId: string) => {
     const row: IdMap = { source: BREF, entityType: "player", sourceId, canonicalId: sourceId };

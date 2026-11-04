@@ -1,4 +1,4 @@
-import { chicagoDateOf, CURRENT_SEASON, upsertByKey, type Database, type Game, type ModelMessage, type Vegas } from "../engine";
+import { chicagoDateOf, CURRENT_SEASON, mergeGame, upsertByKey, type Database, type Game, type ModelMessage, type Vegas } from "../engine";
 import { canonicalTeam, matchupGameId } from "./teams";
 
 export const ESPN_ODDS_URL = "https://www.espn.com/nba/odds";
@@ -19,6 +19,8 @@ export type EspnGameOdds = {
   /** Home team's signed spread. Negative means the home team is favored. */
   spread: number;
   total: number;
+  /** Tip timestamp copied from the odds card, including its offset. */
+  tip: string;
 };
 
 export type EspnOddsResult =
@@ -71,7 +73,7 @@ export function parseEspnOdds(html: string, slateDate: string): { games: EspnGam
     const [awaySpread, homeSpread] = spreads;
     if (Math.abs(awaySpread + homeSpread) > 0.01) continue;
     if (totals.some((total) => total !== totals[0])) continue;
-    games.push({ away, home, spread: homeSpread, total: totals[0] });
+    games.push({ away, home, spread: homeSpread, total: totals[0], tip });
   }
   if (dated > 0 && games.length === 0) return { games: [], parsed: false };
   return { games, parsed: true };
@@ -111,9 +113,9 @@ export function applyEspnOdds(db: Database, date: string, gamesOdds: EspnGameOdd
     ensureTeam(home);
     ensureTeam(away);
     const gameId = matchupGameId(date, away, home);
-    const game: Game = { gameId, season: CURRENT_SEASON, gameDate: date, homeTeamId: home, awayTeamId: away, status: "scheduled" };
+    const game: Game = { gameId, season: CURRENT_SEASON, gameDate: date, homeTeamId: home, awayTeamId: away, status: "scheduled", tipAt: row.tip };
     const existing = games.find((item) => item.gameId === gameId);
-    games = upsertByKey(games, [existing?.status === "final" ? { ...game, status: "final" as const } : game], (item) => item.gameId).rows;
+    games = upsertByKey(games, [mergeGame(existing, game)], (item) => item.gameId).rows;
     const lines: Vegas[] = [
       { gameId, teamId: home, season: CURRENT_SEASON, spread: row.spread, total: row.total, sourceTimestamp: retrievedAt },
       { gameId, teamId: away, season: CURRENT_SEASON, spread: -row.spread, total: row.total, sourceTimestamp: retrievedAt },

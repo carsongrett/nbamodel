@@ -444,7 +444,7 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
   });
   assert.equal(parseGameMarket(spread, 129, "ORL"), 7.5);
   assert.equal(parseGameMarket(total, 128, "ORL"), 222.5);
-  const vegas = applyEspnOdds(emptyDatabase(), "2026-11-01", [{ away: "BOS", home: "ORL", spread: 7.5, total: 222.5 }], retrievedAt);
+  const vegas = applyEspnOdds(emptyDatabase(), "2026-11-01", [{ away: "BOS", home: "ORL", spread: 7.5, total: 222.5, tip: "2026-11-02T00:00Z" }], retrievedAt);
   assert.equal(vegas.db.vegas.find((row) => row.teamId === "ORL")?.spread, 7.5);
   assert.equal(vegas.db.vegas.find((row) => row.teamId === "BOS")?.spread, -7.5);
   assert.equal(vegas.db.vegas[0]?.total, 222.5);
@@ -578,8 +578,18 @@ test("espn odds page supplies the home spread and the total", () => {
   const parsed = parseEspnOdds(espnHtml, "2026-11-02");
   assert.equal(parsed.parsed, true);
   assert.equal(parsed.games.length, 1);
-  assert.deepEqual(parsed.games[0], { away: "OKC", home: "CLE", spread: -4.5, total: 229.5 });
+  assert.deepEqual(parsed.games[0], { away: "OKC", home: "CLE", spread: -4.5, total: 229.5, tip: "2026-11-03T00:00Z" });
   const stored = applyEspnOdds(emptyDatabase(), "2026-11-02", parsed.games, retrievedAt);
+  assert.equal(stored.db.games.find((row) => row.homeTeamId === "CLE")?.tipAt, "2026-11-03T00:00Z");
+  const kept = applyBettingProsProbe(stored.db, "2026-11-02", {
+    state: "parsed",
+    message: "ok",
+    calls: [],
+    events: [{ id: "10", home: "CLE", away: "OKC" }],
+    offers: [],
+    furtherPages: 0,
+  }, retrievedAt);
+  assert.equal(kept.db.games.find((row) => row.homeTeamId === "CLE")?.tipAt, "2026-11-03T00:00Z");
   assert.equal(stored.db.vegas.find((row) => row.teamId === "CLE")?.spread, -4.5);
   assert.equal(stored.db.vegas.find((row) => row.teamId === "OKC")?.spread, 4.5);
   assert.equal(stored.db.vegas[0]?.total, 229.5);
