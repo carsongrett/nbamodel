@@ -102,6 +102,18 @@ function saveLabel(line: number | null, source: string): string {
   return source === "saved" ? "Saved pregame" : "Preview";
 }
 
+function byProjectedPoints(
+  a: { playerName: string; stats: { points: { projection: number | null } } },
+  b: { playerName: string; stats: { points: { projection: number | null } } },
+): number {
+  const left = a.stats.points.projection;
+  const right = b.stats.points.projection;
+  if (left == null && right == null) return a.playerName.localeCompare(b.playerName);
+  if (left == null) return 1;
+  if (right == null) return -1;
+  return right - left || a.playerName.localeCompare(b.playerName);
+}
+
 export default function Dashboard({ initialDate, authConfigured }: { initialDate: string; authConfigured: boolean }) {
   const date = initialDate;
   const [stat, setStat] = useState<Stat>("points");
@@ -177,7 +189,10 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   const games = useMemo(() => {
     const rows = (slate?.rows ?? []).filter((row) => (teamId ? row.teamId === teamId : true));
     return (slate?.games ?? [])
-      .map((game) => ({ game, rows: rows.filter((row) => row.gameId === game.gameId) }))
+      .map((game) => ({
+        game,
+        rows: rows.filter((row) => row.gameId === game.gameId).sort(byProjectedPoints),
+      }))
       .filter((item) => item.rows.length > 0);
   }, [slate, teamId]);
 
