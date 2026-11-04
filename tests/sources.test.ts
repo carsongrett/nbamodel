@@ -7,7 +7,7 @@ import { applyModelRun, buildSlate, CURRENT_SEASON, defenseVsPosition, dvpWindow
 import { applyPublicPages, stripSample, type FetchedPage, type PublicFetch } from "../lib/sources/apply.ts";
 import { applyBettingProsProbe } from "../lib/sources/apply-bettingpros.ts";
 import { fetchBettingProsDay, parseGameMarket, type ProbeResult } from "../lib/sources/bettingpros.ts";
-import { collectLines, collectProjectionSources, commitLines, commitProjections, FANTASYPROS_DVP_URL, TEAMRANKINGS_OPP_REBOUNDS_URL } from "../lib/sources/daily-run.ts";
+import { clearLinesCache, collectLines, collectProjectionSources, commitLines, commitProjections, FANTASYPROS_DVP_URL, TEAMRANKINGS_OPP_REBOUNDS_URL } from "../lib/sources/daily-run.ts";
 import { fetchDimersSlate, probeRoundNumbers } from "../lib/sources/dimers.ts";
 import { applyEspnOdds, parseEspnOdds } from "../lib/sources/espn.ts";
 import { parseEnvText, readProjectEnv } from "../lib/sources/env-file.ts";
@@ -315,10 +315,10 @@ test("sportsline names match only one normalized player on the same team", () =>
   assert.equal(ambiguous.db.projections.length, 0);
 });
 
-function offerBody(marketId: number, page: number, totalPages: number, line: number) {
+function offerBody(marketId: number, page: number, totalPages: number, line: number, eventId = 10) {
   return JSON.stringify({
     offers: [{
-      event_id: 10,
+      event_id: eventId,
       market_id: marketId,
       player_id: 55,
       participant: { name: "Luka Dončić" },
@@ -327,50 +327,81 @@ function offerBody(marketId: number, page: number, totalPages: number, line: num
         { selection: "under", books: [{ id: 0, lines: [{ line, cost: -105 }] }] },
       ],
     }],
+    _pagination: { page, total_pages: totalPages },
     pagination: { page, total_pages: totalPages },
   });
 }
 
-test("bettingpros day fetch pages after the first offers page parses", async () => {
+function eventsBody(page: number, totalPages: number, events: { id: number; home: string; visitor: string }[]) {
+  return JSON.stringify({
+    events: events.map((event) => ({ id: event.id, home: { abbreviation: event.home }, visitor: { abbreviation: event.visitor } })),
+    _pagination: { page, total_pages: totalPages },
+  });
+}
+
+async function finishTimers<T>(t: { mock: { timers: { runAll: () => void } } }, pending: Promise<T>): Promise<T> {
+  let done = false;
+  const result = pending.then((value) => {
+    done = true;
+    return value;
+  }, (error: unknown) => {
+    done = true;
+    throw error;
+  });
+  for (let i = 0; i < 80 && !done; i += 1) {
+    for (let step = 0; step < 30; step += 1) await Promise.resolve();
+    t.mock.timers.runAll();
+  }
+  if (!done) throw new Error("BettingPros fetch did not finish");
+  return result;
+}
+
+test("bettingpros day fetch pages after the first offers page parses", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const previous = process.env.BETTINGPROS_API_KEY;
   delete process.env.BETTINGPROS_API_KEY;
+  try {
   let calls = 0;
-  const cold = await fetchBettingProsDay("2026-11-02", async () => {
+  const cold = await finishTimers(t, fetchBettingProsDay("2026-11-02", async () => {
     calls += 1;
     throw new Error("should not be called");
-  });
+  }));
   assert.equal(cold.state, "setup_needed");
   assert.equal(calls, 0);
 
   process.env.BETTINGPROS_API_KEY = "test-key";
   const urls: string[] = [];
-  const day = await fetchBettingProsDay("2026-11-02", async (url, init) => {
+  const day = await finishTimers(t, fetchBettingProsDay("2026-11-02", async (url, init) => {
     urls.push(url);
     assert.equal(init.headers["x-api-key"], "test-key");
+    assert.equal(new URL(url).searchParams.get("limit"), "-1");
     if (url.includes("/events")) {
-      return {
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({
-          events: [{ id: 10, home: { abbreviation: "LAL" }, visitor: { abbreviation: "TOR" }, spread: -3.5, total: 220 }],
-        }),
-      };
+      const pageNumber = Number(new URL(url).searchParams.get("page") ?? "1");
+      const games = pageNumber === 1
+        ? [{ id: 10, home: "LAL", visitor: "TOR" }]
+        : [{ id: 11, home: "BOS", visitor: "NYK" }];
+      return { ok: true, status: 200, text: async () => eventsBody(pageNumber, 2, games) };
     }
-    const marketId = Number(new URL(url).searchParams.get("market_id"));
-    const pageNumber = Number(new URL(url).searchParams.get("page") ?? "1");
-    if (marketId === 129 || marketId === 128) {
-      return { ok: true, status: 200, text: async () => JSON.stringify({ offers: [], _pagination: { page: 1, total_pages: 1 } }) };
-    }
+    const params = new URL(url).searchParams;
+    assert.equal(params.get("event_id"), "10:11");
+    assert.equal(params.get("market_id"), "156:157");
+    assert.equal(params.get("book_id"), "0");
+    const pageNumber = Number(params.get("page") ?? "1");
+    const marketId = pageNumber === 1 ? 156 : 157;
     const line = marketId === 157 ? 8.5 : 22.5;
     return { ok: true, status: 200, text: async () => offerBody(marketId, pageNumber, 2, line) };
-  });
-  assert.equal(urls.filter((url) => url.includes("page=2")).length, 2);
+  }));
+  const offerUrls = urls.filter((url) => url.includes("/offers"));
+  const eventUrls = urls.filter((url) => url.includes("/events"));
+  assert.equal(eventUrls.length, 2);
+  assert.equal(eventUrls.filter((url) => url.includes("page=2")).length, 1);
+  assert.equal(offerUrls.length, 2);
+  assert.equal(offerUrls[0]?.includes("page="), false);
+  assert.equal(offerUrls.filter((url) => url.includes("page=2")).length, 1);
   assert.equal(urls.some((url) => url.includes("page=3")), false);
-  assert.equal(urls.filter((url) => url.includes("market_id=156")).length, 2);
-  assert.equal(urls.filter((url) => url.includes("market_id=157")).length, 2);
+  assert.equal(offerUrls.every((url) => url.includes("event_id=10:11") && url.includes("market_id=156:157") && url.includes("book_id=0") && url.includes("limit=-1")), true);
   assert.equal(urls.some((url) => url.includes("market_id=336")), false);
   assert.equal(urls.some((url) => url.includes("market_id=129") || url.includes("market_id=128")), false);
-  assert.equal(urls[1]?.includes("page="), false);
   assert.equal(day.state, "parsed");
   assert.equal(day.calls.join(" ").includes("test-key"), false);
 
@@ -386,25 +417,24 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
   assert.equal(repeat.db.lines.length, 2);
 
   const unparsedUrls: string[] = [];
-  const unparsed = await fetchBettingProsDay("2026-11-02", async (url) => {
+  const unparsed = await finishTimers(t, fetchBettingProsDay("2026-11-02", async (url) => {
     unparsedUrls.push(url);
     if (url.includes("/events")) {
       return { ok: true, status: 200, text: async () => JSON.stringify({ events: [{ id: 10, home: "LAL", visitor: "TOR", spread: -3.5, total: 220 }] }) };
     }
     return { ok: true, status: 200, text: async () => "not-json" };
-  });
+  }));
   assert.equal(unparsed.state, "unparsed");
   assert.equal(unparsedUrls.length, 2);
 
   const stuck: string[] = [];
-  const stuckRun = await fetchBettingProsDay("2026-11-02", async (url) => {
+  const stuckRun = await finishTimers(t, fetchBettingProsDay("2026-11-02", async (url) => {
     stuck.push(url);
     if (url.includes("/events")) {
       return { ok: true, status: 200, text: async () => JSON.stringify({ events: [{ id: 10, home: "LAL", visitor: "TOR" }] }) };
     }
-    const marketId = Number(new URL(url).searchParams.get("market_id"));
-    return { ok: true, status: 200, text: async () => offerBody(marketId, 1, 5, 10) };
-  });
+    return { ok: true, status: 200, text: async () => offerBody(156, 1, 5, 10) };
+  }));
   assert.equal(stuckRun.state, "error");
   assert.match(stuckRun.message, /page 1/);
   assert.equal(stuck.filter((url) => url.includes("page=2")).length, 1);
@@ -449,83 +479,167 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
   assert.equal(vegas.db.vegas.find((row) => row.teamId === "BOS")?.spread, -7.5);
   assert.equal(vegas.db.vegas[0]?.total, 222.5);
 
-  if (previous == null) delete process.env.BETTINGPROS_API_KEY;
-  else process.env.BETTINGPROS_API_KEY = previous;
   assert.equal(failed("down").ok, false);
+  } finally {
+    t.mock.timers.reset();
+    if (previous == null) delete process.env.BETTINGPROS_API_KEY;
+    else process.env.BETTINGPROS_API_KEY = previous;
+  }
 });
 
-test("bettingpros waits 500ms between offer pulls", async (t) => {
+test("bettingpros waits 1500ms between offer pages and reads the 429 body", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const previous = process.env.BETTINGPROS_API_KEY;
   process.env.BETTINGPROS_API_KEY = "test-key";
-  const eventsBody = JSON.stringify({
-    events: [
-      { id: 10, home: { abbreviation: "LAL" }, visitor: { abbreviation: "TOR" } },
-      { id: 11, home: { abbreviation: "BOS" }, visitor: { abbreviation: "NYK" } },
-    ],
-  });
-
-  async function finish<T>(pending: Promise<T>): Promise<T> {
-    let done = false;
-    const result = pending.then((value) => {
-      done = true;
-      return value;
-    });
-    for (let i = 0; i < 20 && !done; i += 1) {
-      for (let step = 0; step < 30; step += 1) await Promise.resolve();
-      t.mock.timers.runAll();
-    }
-    if (!done) throw new Error("BettingPros fetch did not finish");
-    return result;
-  }
+  const oneEvent = eventsBody(1, 1, [{ id: 10, home: "LAL", visitor: "TOR" }]);
 
   try {
     const urls: string[] = [];
-    let eventsAt = -1;
+    const eventAt: number[] = [];
     const offerAt: number[] = [];
-    const day = await finish(fetchBettingProsDay("2026-11-02", async (url) => {
+    const day = await finishTimers(t, fetchBettingProsDay("2026-11-02", async (url) => {
       urls.push(url);
       if (url.includes("/events")) {
-        eventsAt = Date.now();
-        return { ok: true, status: 200, text: async () => eventsBody };
+        eventAt.push(Date.now());
+        const pageNumber = Number(new URL(url).searchParams.get("page") ?? "1");
+        const games = pageNumber === 1
+          ? [{ id: 10, home: "LAL", visitor: "TOR" }]
+          : [{ id: 11, home: "BOS", visitor: "NYK" }];
+        return { ok: true, status: 200, text: async () => eventsBody(pageNumber, 2, games) };
       }
       offerAt.push(Date.now());
-      const marketId = Number(new URL(url).searchParams.get("market_id"));
       const pageNumber = Number(new URL(url).searchParams.get("page") ?? "1");
-      return { ok: true, status: 200, text: async () => offerBody(marketId, pageNumber, 1, 22.5) };
+      return { ok: true, status: 200, text: async () => offerBody(pageNumber === 2 ? 157 : 156, pageNumber, 3, 22.5) };
     }));
-    assert.equal(urls.filter((url) => url.includes("/events")).length, 1);
-    assert.equal(offerAt.length, 4);
-    assert.equal(eventsAt, 0);
-    assert.deepEqual(offerAt, [0, 500, 1000, 1500]);
+    assert.equal(urls.filter((url) => url.includes("/events")).length, 2);
+    assert.deepEqual(eventAt, [0, 0]);
+    assert.equal(offerAt.length, 3);
+    assert.deepEqual(offerAt, [0, 1500, 3000]);
     assert.equal(day.state, "parsed");
+    assert.equal(urls.filter((url) => url.includes("/offers")).every((url) => url.includes("event_id=10:11") && url.includes("market_id=156:157")), true);
 
     const burst: string[] = [];
-    let burstEventsAt = -1;
     const burstAt: number[] = [];
-    const stopped = await finish(fetchBettingProsDay("2026-11-02", async (url) => {
+    const stopped = await finishTimers(t, fetchBettingProsDay("2026-11-02", async (url) => {
       burst.push(url);
-      if (url.includes("/events")) {
-        burstEventsAt = Date.now();
-        return { ok: true, status: 200, text: async () => JSON.stringify({ events: [{ id: 10, home: "LAL", visitor: "TOR" }] }) };
-      }
+      if (url.includes("/events")) return { ok: true, status: 200, text: async () => oneEvent };
       burstAt.push(Date.now());
-      if (burst.filter((item) => item.includes("/offers")).length >= 2) {
-        return { ok: false, status: 429, text: async () => "" };
-      }
-      const marketId = Number(new URL(url).searchParams.get("market_id"));
-      return { ok: true, status: 200, text: async () => offerBody(marketId, 1, 3, 22.5) };
+      return { ok: false, status: 429, text: async () => JSON.stringify({ message: "Too Many Requests" }) };
     }));
-    assert.equal(burst.filter((url) => url.includes("/events")).length, 1);
-    assert.equal(burst.filter((url) => url.includes("/offers")).length, 2);
-    assert.equal(burst.some((url) => url.includes("page=2")), true);
-    assert.equal(burst.some((url) => url.includes("page=3")), false);
-    assert.equal(burstAt[0], burstEventsAt);
-    assert.equal(burstAt[1] - burstAt[0], 500);
+    const burstOffers = burst.filter((url) => url.includes("/offers"));
+    assert.equal(burstOffers.length, 4);
+    assert.equal(new Set(burstOffers).size, 1);
+    assert.equal(burstOffers.some((url) => url.includes("page=")), false);
+    assert.deepEqual(burstAt.map((at) => at - burstAt[0]), [0, 1500, 3000, 4500]);
     assert.equal(stopped.state, "error");
-    assert.match(stopped.message, /429/);
+    assert.match(stopped.message, /Too Many Requests/);
+    const burstSaved = commitLines(emptyDatabase(), "2026-11-02", stopped, retrievedAt);
+    assert.equal(burstSaved.db, undefined);
+
+    const retried: string[] = [];
+    const retriedAt: number[] = [];
+    let offerHits = 0;
+    const recovered = await finishTimers(t, fetchBettingProsDay("2026-11-02", async (url) => {
+      retried.push(url);
+      if (url.includes("/events")) return { ok: true, status: 200, text: async () => oneEvent };
+      retriedAt.push(Date.now());
+      offerHits += 1;
+      if (offerHits === 1) return { ok: false, status: 429, text: async () => "Too Many Requests" };
+      const pageNumber = Number(new URL(url).searchParams.get("page") ?? "1");
+      return { ok: true, status: 200, text: async () => offerBody(156, pageNumber, 2, 22.5) };
+    }));
+    assert.equal(recovered.state, "parsed");
+    assert.equal(retried.filter((url) => url.includes("page=2")).length, 1);
+    assert.deepEqual(retriedAt.map((at) => at - retriedAt[0]), [0, 1500, 3000]);
+
+    const daily: string[] = [];
+    const partial = await finishTimers(t, fetchBettingProsDay("2026-11-02", async (url) => {
+      daily.push(url);
+      if (url.includes("/events")) return { ok: true, status: 200, text: async () => oneEvent };
+      if (url.includes("page=2")) return { ok: false, status: 429, text: async () => JSON.stringify({ error: "Limit Exceeded" }) };
+      return { ok: true, status: 200, text: async () => offerBody(156, 1, 2, 22.5) };
+    }));
+    assert.equal(daily.filter((url) => url.includes("/offers")).length, 2);
+    assert.equal(partial.state, "error");
+    assert.match(partial.message, /Limit Exceeded/);
+    assert.match(partial.message, /midnight UTC/);
+    assert.equal(partial.offers.length > 0, true);
+    const unsaved = commitLines(emptyDatabase(), "2026-11-02", partial, retrievedAt);
+    assert.equal(unsaved.db, undefined);
+    assert.match(unsaved.message, /not changed/);
+
+    const capped: string[] = [];
+    const cappedRun = await finishTimers(t, fetchBettingProsDay("2026-11-02", async (url) => {
+      capped.push(url);
+      if (url.includes("/events")) return { ok: true, status: 200, text: async () => oneEvent };
+      const pageNumber = Number(new URL(url).searchParams.get("page") ?? "1");
+      return { ok: true, status: 200, text: async () => offerBody(156, pageNumber, 100, 22.5) };
+    }));
+    assert.equal(capped.length, 40);
+    assert.equal(cappedRun.state, "error");
+    assert.match(cappedRun.message, /40/);
+    assert.equal(cappedRun.offers.length > 0, true);
+    const cappedSaved = commitLines(emptyDatabase(), "2026-11-02", cappedRun, retrievedAt);
+    assert.equal(cappedSaved.db, undefined);
   } finally {
     t.mock.timers.reset();
+    if (previous == null) delete process.env.BETTINGPROS_API_KEY;
+    else process.env.BETTINGPROS_API_KEY = previous;
+  }
+});
+
+test("a successful lines slate is reused for that Chicago date", async () => {
+  const previous = process.env.BETTINGPROS_API_KEY;
+  process.env.BETTINGPROS_API_KEY = "test-key";
+  clearLinesCache();
+  const slate = eventsBody(1, 1, [{ id: 10, home: "LAL", visitor: "TOR" }]);
+  try {
+    let calls = 0;
+    const fetchImpl = async (url: string) => {
+      calls += 1;
+      if (url.includes("/events")) {
+        assert.equal(new URL(url).searchParams.get("limit"), "-1");
+        return { ok: true, status: 200, text: async () => slate };
+      }
+      const params = new URL(url).searchParams;
+      assert.equal(params.get("event_id"), "10");
+      assert.equal(params.get("market_id"), "156:157");
+      assert.equal(params.get("book_id"), "0");
+      assert.equal(params.get("limit"), "-1");
+      return { ok: true, status: 200, text: async () => offerBody(156, 1, 1, 22.5) };
+    };
+    const first = await collectLines("2026-11-07", fetchImpl);
+    assert.equal(first.state, "parsed");
+    assert.equal(first.fromCache, undefined);
+    assert.equal(calls, 2);
+    const second = await collectLines("2026-11-07", fetchImpl);
+    assert.equal(second.fromCache, true);
+    assert.equal(calls, 2);
+    assert.equal(second.offers.length, first.offers.length);
+    const reused = commitLines(emptyDatabase(), "2026-11-07", second, retrievedAt);
+    assert.match(reused.message, /not called again/);
+
+    const other = await collectLines("2026-11-08", fetchImpl);
+    assert.equal(other.fromCache, undefined);
+    assert.equal(calls, 4);
+
+    let failures = 0;
+    const denied = async (url: string) => {
+      failures += 1;
+      if (url.includes("/events")) return { ok: false, status: 429, text: async () => "{\"message\":\"Limit Exceeded\"}" };
+      return { ok: true, status: 200, text: async () => offerBody(156, 1, 1, 22.5) };
+    };
+    const failedDay = await collectLines("2026-11-09", denied);
+    assert.equal(failedDay.state, "error");
+    assert.match(failedDay.message, /Limit Exceeded/);
+    assert.equal(failures, 1);
+    const again = await collectLines("2026-11-09", denied);
+    assert.equal(again.fromCache, undefined);
+    assert.equal(failures, 2);
+    const unchanged = commitLines(emptyDatabase(), "2026-11-09", failedDay, retrievedAt);
+    assert.equal(unchanged.db, undefined);
+  } finally {
+    clearLinesCache();
     if (previous == null) delete process.env.BETTINGPROS_API_KEY;
     else process.env.BETTINGPROS_API_KEY = previous;
   }
@@ -677,6 +791,7 @@ test("espn odds page supplies the home spread and the total", () => {
 });
 
 test("the first failed source stops the click and does not save today's slate", async () => {
+  clearLinesCache();
   const previous = process.env.BETTINGPROS_API_KEY;
   process.env.BETTINGPROS_API_KEY = "test-key";
   const espnPage = async () => espnHtml;

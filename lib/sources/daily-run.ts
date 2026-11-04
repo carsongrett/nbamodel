@@ -153,12 +153,22 @@ export function commitProjections(
   };
 }
 
+const linesByDate = new Map<string, ProbeResult>();
+
+export function clearLinesCache(): void {
+  linesByDate.clear();
+}
+
 export async function collectLines(date: string, fetchImpl?: PageFetch): Promise<ProbeResult> {
+  const cached = linesByDate.get(date);
+  if (cached) return { ...cached, fromCache: true };
   const fetchPage: PageFetch = fetchImpl ?? (async (url, init) => {
     const response = await fetch(url, { headers: init.headers, signal: AbortSignal.timeout(20000) });
     return { ok: response.ok, status: response.status, text: () => response.text() };
   });
-  return fetchBettingProsDay(date, fetchPage);
+  const result = await fetchBettingProsDay(date, fetchPage);
+  if (result.state === "parsed") linesByDate.set(date, result);
+  return result;
 }
 
 export function commitLines(
@@ -177,9 +187,10 @@ export function commitLines(
   const ran = applyModelRun(applied.db, date, savedAt);
   const messages = [...applied.messages, ...ran.messages];
   const saved = messages.find((item) => item.message.startsWith("Saved "));
+  const lead = saved?.message ?? `Loaded BettingPros lines for ${date}.`;
   return {
     db: ran.db,
-    message: saved?.message ?? `Loaded BettingPros lines for ${date}.`,
+    message: odds.fromCache ? `${lead} BettingPros was not called again.` : lead,
     messages,
   };
 }
