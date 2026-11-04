@@ -1,4 +1,4 @@
-import { CURRENT_SEASON, idsEqual, upsertByKey, type Database, type Game, type IdMap, type ModelMessage, type PropLine, type Stat } from "../engine";
+import { CURRENT_SEASON, idsEqual, mergeGame, upsertByKey, type Database, type Game, type IdMap, type ModelMessage, type PropLine, type Stat } from "../engine";
 import { POINTS_MARKET_ID, POINTS_REBOUNDS_MARKET_ID, REBOUNDS_MARKET_ID, type ProbeResult } from "./bettingpros";
 import { normalizePersonName } from "./names";
 import { canonicalTeam, matchupGameId } from "./teams";
@@ -30,7 +30,7 @@ export function applyBettingProsProbe(db: Database, date: string, probe: ProbeRe
     gameByEvent.set(event.id, gameId);
     const game: Game = { gameId, season: CURRENT_SEASON, gameDate: date, homeTeamId: home, awayTeamId: away, status: "scheduled" };
     const existing = games.find((row) => row.gameId === gameId);
-    games = upsertByKey(games, [existing?.status === "final" ? { ...game, status: "final" as const } : game], (row) => row.gameId).rows;
+    games = upsertByKey(games, [mergeGame(existing, game)], (row) => row.gameId).rows;
   }
   let stored = 0;
   let unmapped = 0;

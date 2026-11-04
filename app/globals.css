@@ -71,6 +71,12 @@ button:disabled { opacity: 0.55; cursor: wait; }
 }
 .game > summary::-webkit-details-marker { display: none; }
 .game > summary::marker { content: ""; }
+.game-time {
+  margin-left: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 .game-odds { font-variant-numeric: tabular-nums; font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
 .empty-games { margin: 0; padding: 14px 16px; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }

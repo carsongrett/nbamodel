@@ -33,6 +33,7 @@ import {
   weightedPaceDiff,
   chicagoDateOf,
   chicagoToday,
+  tipLabel,
   type Database,
   type Settings,
   DEFAULT_SETTINGS,
@@ -690,6 +691,32 @@ test("minutes suggestions are overrides and do not rewrite a saved projection", 
   assert.equal(applied.db.pregame[0].minutes, 34);
   assert.equal(applied.db.pregame[0].line, 28.5);
   assert.equal(applied.db.research[0].appliedAt, "2026-11-01T19:00:00.000Z");
+});
+
+test("games sort by tip time and the clock stays in the source zone", () => {
+  assert.equal(tipLabel("2026-11-05T00:00Z"), "12:00 AM UTC");
+  assert.equal(tipLabel("2026-11-05T00:30:00Z"), "12:30 AM UTC");
+  assert.equal(tipLabel("2026-11-05T17:00:00+00:00"), "5:00 PM UTC");
+  assert.equal(tipLabel("2026-11-04T18:00:00-06:00"), "6:00 PM CT");
+  assert.equal(tipLabel("2026-11-04T19:00:00-04:00"), "7:00 PM ET");
+  assert.equal(tipLabel("2026-11-04T19:00:00-05:00"), "7:00 PM UTC-5");
+  assert.equal(tipLabel("2026-11-05T00:00Z")?.includes("CT"), false);
+  assert.equal(tipLabel("2026-11-05T00:00Z")?.includes("ET"), false);
+
+  const db = emptyDatabase();
+  db.games.push(
+    { gameId: "2026-11-04|ATL@WAS", season: CURRENT_SEASON, gameDate: "2026-11-04", homeTeamId: "WAS", awayTeamId: "ATL", status: "scheduled", tipAt: "2026-11-05T02:00Z" },
+    { gameId: "2026-11-04|CHA@BKN", season: CURRENT_SEASON, gameDate: "2026-11-04", homeTeamId: "BKN", awayTeamId: "CHA", status: "scheduled", tipAt: "2026-11-05T00:00Z" },
+    { gameId: "2026-11-04|DEN@LAL", season: CURRENT_SEASON, gameDate: "2026-11-04", homeTeamId: "LAL", awayTeamId: "DEN", status: "scheduled", tipAt: "2026-11-04T23:30Z" },
+    { gameId: "2026-11-04|MIA@BOS", season: CURRENT_SEASON, gameDate: "2026-11-04", homeTeamId: "BOS", awayTeamId: "MIA", status: "scheduled" },
+  );
+  const labels = buildSlate(db, "2026-11-04").games.map((game) => `${game.label} ${game.tipLabel ?? "no time"}`);
+  assert.deepEqual(labels, [
+    "DEN at LAL 11:30 PM UTC",
+    "CHA at BKN 12:00 AM UTC",
+    "ATL at WAS 2:00 AM UTC",
+    "MIA at BOS no time",
+  ]);
 });
 
 test("chicago date and settings validation", () => {

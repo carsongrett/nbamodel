@@ -68,6 +68,8 @@ export type Game = {
   homeTeamId: string;
   awayTeamId: string;
   status: GameStatus;
+  /** Tip timestamp as the source wrote it. Absent when that fetch had no start time. */
+  tipAt?: string | null;
 };
 export type IdMap = {
   source: string;
@@ -275,6 +277,53 @@ export function chicagoDateOf(timestamp: string): string | null {
   const date = new Date(trimmed);
   if (Number.isNaN(date.getTime())) return null;
   return chicagoToday(date);
+}
+
+/**
+ * Clock time printed on the timestamp. The hour and minute stay as written.
+ * Z is UTC. -06:00 is CT. -04:00 is ET. -05:00 stays UTC-5: that offset is both Central daylight and Eastern standard.
+ */
+export function tipLabel(timestamp: string | null | undefined): string | null {
+  if (!timestamp) return null;
+  const match = timestamp.trim().match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  if (!Number.isInteger(hour) || hour > 23 || minute > 59) return null;
+  const zone = tipZone(match[6]);
+  if (!zone) return null;
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${match[5]} ${suffix} ${zone}`;
+}
+
+function tipZone(offset: string): string | null {
+  const normalized = offset === "Z" ? "Z" : offset.replace(/^([+-]\d{2})(\d{2})$/, "$1:$2");
+  if (normalized === "Z" || normalized === "+00:00") return "UTC";
+  if (normalized === "-06:00") return "CT";
+  if (normalized === "-04:00") return "ET";
+  if (normalized === "-05:00") return "UTC-5";
+  return null;
+}
+
+/** Keep a stored tip when the incoming game has none, and keep a final status. */
+export function mergeGame(existing: Game | undefined, incoming: Game): Game {
+  if (!existing) return incoming;
+  return {
+    ...incoming,
+    status: existing.status === "final" ? "final" : incoming.status,
+    tipAt: incoming.tipAt ?? existing.tipAt ?? null,
+  };
+}
+
+function byTipThenLabel(a: SlateGame, b: SlateGame): number {
+  const left = a.tipAt ? Date.parse(a.tipAt) : Number.NaN;
+  const right = b.tipAt ? Date.parse(b.tipAt) : Number.NaN;
+  const leftOk = Number.isFinite(left);
+  const rightOk = Number.isFinite(right);
+  if (leftOk && rightOk && left !== right) return left - right;
+  if (leftOk !== rightOk) return leftOk ? -1 : 1;
+  return a.label.localeCompare(b.label);
 }
 
 export function freshnessFlag(label: string, timestamp: string | null, slateDate: string): string | null {
@@ -1208,7 +1257,16 @@ export function importRecords(db: Database, kind: ImportKind, rows: { rowNumber:
         errors.push({ row: row.rowNumber, message: "home and away teams must be different." });
         continue;
       }
-      incoming.push({ gameId: id.id, season: CURRENT_SEASON, gameDate, homeTeamId: home.id, awayTeamId: away.id, status: status as GameStatus });
+      const prior = next.games.find((game) => game.gameId === id.id);
+      incoming.push({
+        gameId: id.id,
+        season: CURRENT_SEASON,
+        gameDate,
+        homeTeamId: home.id,
+        awayTeamId: away.id,
+        status: status as GameStatus,
+        tipAt: prior?.tipAt ?? null,
+      });
     }
     next.games = take(next.games, incoming, (r) => r.gameId);
   } else if (kind === "projections") {
@@ -1958,6 +2016,8 @@ export type SlateGame = {
   awayTeamId: string;
   spread: number | null;
   total: number | null;
+  tipAt: string | null;
+  tipLabel: string | null;
 };
 
 export type SlateView = {
@@ -2088,7 +2148,8 @@ export function canonicalizeDatabase(db: Database): Database {
     else {
       const statusRank = { scheduled: 0, in_progress: 1, final: 2 };
       const status = statusRank[games[at].status] >= statusRank[next.status] ? games[at].status : next.status;
-      games[at] = { ...games[at], status };
+      const tipAt = games[at].tipAt ?? next.tipAt ?? null;
+      games[at] = { ...games[at], status, tipAt };
     }
   }
   const gameOf = (gameId: string) => gameIdOf.get(gameId) ?? gameId;
@@ -2208,6 +2269,7 @@ export function buildSlate(db: Database, date: string): SlateView {
     .map((g) => {
       const home = current(db.vegas).find((v) => idsEqual(v.gameId, g.gameId) && idsEqual(v.teamId, g.homeTeamId));
       const any = current(db.vegas).find((v) => idsEqual(v.gameId, g.gameId));
+      const tipAt = g.tipAt ?? null;
       return {
         gameId: g.gameId,
         label: `${g.awayTeamId} at ${g.homeTeamId}`,
@@ -2216,9 +2278,11 @@ export function buildSlate(db: Database, date: string): SlateView {
         awayTeamId: g.awayTeamId,
         spread: home?.spread ?? null,
         total: home?.total ?? any?.total ?? null,
+        tipAt,
+        tipLabel: tipLabel(tipAt),
       };
     })
-    .sort((a, b) => a.label.localeCompare(b.label));
+    .sort(byTipThenLabel);
   const dates = [...new Set(db.games.filter((g) => g.season === CURRENT_SEASON).map((g) => g.gameDate))].sort((a, b) => b.localeCompare(a));
   return {
     date,

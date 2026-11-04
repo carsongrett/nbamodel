@@ -270,7 +270,10 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
         ) : games.map(({ game, rows }) => (
           <details className="game" key={game.gameId}>
             <summary>
-              <span className="player">{game.label}</span>
+              <span className="player">
+                {game.label}
+                {game.tipLabel ? <span className="game-time">{game.tipLabel}</span> : null}
+              </span>
               <span className="game-odds">{gameOdds(game)}</span>
             </summary>
             <div className="table-wrap game-table">

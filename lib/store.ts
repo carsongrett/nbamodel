@@ -120,6 +120,7 @@ class SupabaseStore implements Store {
         homeTeamId: String(row.home_team_id),
         awayTeamId: String(row.away_team_id),
         status: row.status as Game["status"],
+        tipAt: str(row.tip_at),
       })),
       idMap: idMap.map((row) => ({
         source: String(row.source),
@@ -258,9 +259,22 @@ class SupabaseStore implements Store {
     await this.replace("players", db.players.map((row: Player) => ({
       player_id: row.playerId, display_name: row.displayName, team_id: row.teamId, position: row.position, season: row.season,
     })), ["player_id"]);
-    await this.replace("games", db.games.map((row) => ({
-      game_id: row.gameId, season: row.season, game_date: row.gameDate, home_team_id: row.homeTeamId, away_team_id: row.awayTeamId, status: row.status,
-    })), ["game_id"]);
+    const gameRows = db.games.map((row) => ({
+      game_id: row.gameId,
+      season: row.season,
+      game_date: row.gameDate,
+      home_team_id: row.homeTeamId,
+      away_team_id: row.awayTeamId,
+      status: row.status,
+      tip_at: row.tipAt ?? null,
+    }));
+    try {
+      await this.replace("games", gameRows, ["game_id"]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (!message.includes("tip_at")) throw error;
+      await this.replace("games", gameRows.map(({ tip_at: _tip, ...row }) => row), ["game_id"]);
+    }
     await this.replace("source_id_map", db.idMap.map((row) => ({
       source: row.source, entity_type: row.entityType, source_id: row.sourceId, canonical_id: row.canonicalId,
     })), ["source", "entity_type", "source_id"]);
