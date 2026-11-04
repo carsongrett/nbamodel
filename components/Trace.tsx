@@ -5,7 +5,7 @@ function fmt(value: number | null | undefined, digits = 2): string {
   return value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-export default function Trace({ stat, implied, locked }: { stat: SlateStat; implied: string | null; locked: boolean }) {
+export default function Trace({ stat, locked }: { stat: SlateStat; locked: boolean }) {
   const projectionDetail = [locked ? "Locked after actuals." : null, stat.blockReason].filter(Boolean).join(" ");
   const sportsline = stat.adjustments.find((adjustment) => adjustment.key === "sportsline");
   const dimers = stat.adjustments.find((adjustment) => adjustment.key === "dimers");
@@ -36,7 +36,6 @@ export default function Trace({ stat, implied, locked }: { stat: SlateStat; impl
           />
         ))}
         <Step label="Projection" value={stat.projection == null ? "Blocked" : fmt(stat.projection)} detail={projectionDetail || null} />
-        {implied ? <Step label="Team points" value="" detail={implied} /> : null}
       </div>
     </details>
   );

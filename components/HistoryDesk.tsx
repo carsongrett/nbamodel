@@ -219,7 +219,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                       <td>
                         <div className="player">{row.playerName}</div>
                         <div className="meta">{row.position} · {row.playerId}</div>
-                        {archived ? <Trace stat={cell} implied={row.impliedDetail} locked={row.locked} /> : null}
+                        {archived ? <Trace stat={cell} locked={row.locked} /> : null}
                       </td>
                       <td>{row.teamId}</td>
                       <td>{row.opponentId}</td>

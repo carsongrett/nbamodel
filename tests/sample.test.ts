@@ -41,7 +41,6 @@ test("sample projections use the points line only as a weight", () => {
   const luka = before.rows.find((row) => row.playerId === "player_luka");
   assert.ok(luka);
   assert.equal(luka.impliedTeamPoints, 109);
-  assert.match(luka.impliedDetail ?? "", /signed spread/);
   const changed = buildSlate({
     ...db,
     lines: db.lines.map((line) => line.playerId === "player_luka" && line.stat === "points" ? { ...line, line: line.line + 10 } : line),

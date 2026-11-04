@@ -301,7 +301,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                           {cell.flags.filter((flag) => flag.includes("missing") && flag.includes("baseline")).map((flag) => (
                             <div className="meta" key={flag}>{flag}</div>
                           ))}
-                          <Trace stat={cell} implied={row.impliedDetail} locked={row.locked} />
+                          <Trace stat={cell} locked={row.locked} />
                         </td>
                         <td>{row.teamId}</td>
                         <td>{row.opponentId}</td>
