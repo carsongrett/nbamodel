@@ -693,15 +693,12 @@ test("minutes suggestions are overrides and do not rewrite a saved projection", 
   assert.equal(applied.db.research[0].appliedAt, "2026-11-01T19:00:00.000Z");
 });
 
-test("games sort by tip time and the clock stays in the source zone", () => {
-  assert.equal(tipLabel("2026-11-05T00:00Z"), "12:00 AM UTC");
-  assert.equal(tipLabel("2026-11-05T00:30:00Z"), "12:30 AM UTC");
-  assert.equal(tipLabel("2026-11-05T17:00:00+00:00"), "5:00 PM UTC");
-  assert.equal(tipLabel("2026-11-04T18:00:00-06:00"), "6:00 PM CT");
-  assert.equal(tipLabel("2026-11-04T19:00:00-04:00"), "7:00 PM ET");
-  assert.equal(tipLabel("2026-11-04T19:00:00-05:00"), "7:00 PM UTC-5");
-  assert.equal(tipLabel("2026-11-05T00:00Z")?.includes("CT"), false);
-  assert.equal(tipLabel("2026-11-05T00:00Z")?.includes("ET"), false);
+test("games sort by tip time and the clock is Central", () => {
+  assert.equal(tipLabel("2026-11-05T00:00Z"), "6:00 PM CT");
+  assert.equal(tipLabel("2026-11-05T00:30:00Z"), "6:30 PM CT");
+  assert.equal(tipLabel("2026-11-05T17:00:00+00:00"), "11:00 AM CT");
+  assert.equal(tipLabel("2026-07-01T00:00Z"), "7:00 PM CT");
+  assert.equal(tipLabel("2026-11-04T23:00Z"), "5:00 PM CT");
 
   const db = emptyDatabase();
   db.games.push(
@@ -712,9 +709,9 @@ test("games sort by tip time and the clock stays in the source zone", () => {
   );
   const labels = buildSlate(db, "2026-11-04").games.map((game) => `${game.label} ${game.tipLabel ?? "no time"}`);
   assert.deepEqual(labels, [
-    "DEN at LAL 11:30 PM UTC",
-    "CHA at BKN 12:00 AM UTC",
-    "ATL at WAS 2:00 AM UTC",
+    "DEN at LAL 5:30 PM CT",
+    "CHA at BKN 6:00 PM CT",
+    "ATL at WAS 8:00 PM CT",
     "MIA at BOS no time",
   ]);
 });

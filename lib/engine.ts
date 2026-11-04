@@ -279,31 +279,24 @@ export function chicagoDateOf(timestamp: string): string | null {
   return chicagoToday(date);
 }
 
-/**
- * Clock time printed on the timestamp. The hour and minute stay as written.
- * Z is UTC. -06:00 is CT. -04:00 is ET. -05:00 stays UTC-5: that offset is both Central daylight and Eastern standard.
- */
+/** ESPN writes the tip in UTC. The row shows that instant in America/Chicago, labeled CT. */
 export function tipLabel(timestamp: string | null | undefined): string | null {
   if (!timestamp) return null;
-  const match = timestamp.trim().match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/);
-  if (!match) return null;
-  const hour = Number(match[4]);
-  const minute = Number(match[5]);
-  if (!Number.isInteger(hour) || hour > 23 || minute > 59) return null;
-  const zone = tipZone(match[6]);
-  if (!zone) return null;
-  const suffix = hour >= 12 ? "PM" : "AM";
-  const hour12 = hour % 12 || 12;
-  return `${hour12}:${match[5]} ${suffix} ${zone}`;
-}
-
-function tipZone(offset: string): string | null {
-  const normalized = offset === "Z" ? "Z" : offset.replace(/^([+-]\d{2})(\d{2})$/, "$1:$2");
-  if (normalized === "Z" || normalized === "+00:00") return "UTC";
-  if (normalized === "-06:00") return "CT";
-  if (normalized === "-04:00") return "ET";
-  if (normalized === "-05:00") return "UTC-5";
-  return null;
+  const trimmed = timestamp.trim();
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/.test(trimmed)) return null;
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: "h12",
+  }).formatToParts(date);
+  const hour = parts.find((part) => part.type === "hour")?.value;
+  const minute = parts.find((part) => part.type === "minute")?.value;
+  const suffix = parts.find((part) => part.type === "dayPeriod")?.value.toUpperCase();
+  if (!hour || !minute || (suffix !== "AM" && suffix !== "PM")) return null;
+  return `${hour}:${minute} ${suffix} CT`;
 }
 
 /** Keep a stored tip when the incoming game has none, and keep a final status. */
