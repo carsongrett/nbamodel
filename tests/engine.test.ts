@@ -145,6 +145,85 @@ test("partial outside sources are averaged and numberfire is ignored", () => {
   assert.match(projection.flags.join(" "), /NumberFire/);
 });
 
+test("points and rebounds blend SportsLine at 65 and Dimers at 35", () => {
+  const points = basePoints({
+    sources: [
+      { source: "sportsline", value: 20 },
+      { source: "dimers", value: 30 },
+      { source: "numberfire", value: 99 },
+    ],
+  });
+  assert.equal(points.baseline, 20 * 0.65 + 30 * 0.35);
+  assert.deepEqual(points.sourcesUsed, ["sportsline", "dimers"]);
+  assert.equal(points.adjustments.find((row) => row.key === "sportsline")?.input, 20);
+  const dimers = points.adjustments.find((row) => row.key === "dimers");
+  assert.equal(dimers?.input, 30);
+  assert.match(dimers?.detail ?? "", /65\/35/);
+  assert.match(dimers?.detail ?? "", /0\.65/);
+  assert.match(dimers?.detail ?? "", /0\.35/);
+  assert.match(points.flags.join(" "), /NumberFire/);
+  const deltas = points.adjustments.reduce((sum, row) => sum + (row.delta ?? 0), 0);
+  assert.equal(points.projection, (points.baseline ?? 0) + deltas);
+
+  const rebounds = projectRebounds({
+    sources: [
+      { source: "sportsline", value: 8 },
+      { source: "dimers", value: 4 },
+    ],
+    projectedMinutes: 30,
+    rebPerMinute: 0.2,
+    rebPerMinuteGames: 10,
+    recentPerGame: 8,
+    recentGames: 5,
+    dvpDiff: 0,
+    paceDiff: 0,
+    oppReboundDiff: 0,
+    strengths,
+  });
+  assert.equal(rebounds.baseline, 8 * 0.65 + 4 * 0.35);
+  assert.equal(rebounds.adjustments.find((row) => row.key === "sportsline")?.input, 8);
+  assert.equal(rebounds.adjustments.find((row) => row.key === "dimers")?.input, 4);
+  assert.equal(rebounds.adjustments.find((row) => row.key === "recent")?.delta, (8 - 8) / 10);
+  assert.equal(rebounds.adjustments.find((row) => row.key === "minutes")?.delta, (0.2 * 30 - 8) / 2);
+});
+
+test("a missing SportsLine or Dimers number leaves the other as the full baseline", () => {
+  const missingDimers = basePoints({
+    sources: [
+      { source: "sportsline", value: 20 },
+      { source: "dimers", value: null },
+      { source: "other", value: 100 },
+    ],
+  });
+  assert.equal(missingDimers.baseline, 20);
+  assert.deepEqual(missingDimers.sourcesUsed, ["sportsline"]);
+  assert.match(missingDimers.flags.join(" "), /Dimers points are missing/);
+  assert.match(missingDimers.adjustments.find((row) => row.key === "dimers")?.detail ?? "", /full points baseline/);
+
+  const missingSportsline = projectRebounds({
+    sources: [{ source: "dimers", value: 11 }],
+    projectedMinutes: 30,
+    rebPerMinute: 0.2,
+    rebPerMinuteGames: 10,
+    recentPerGame: 8,
+    recentGames: 5,
+    dvpDiff: 0,
+    paceDiff: 0,
+    oppReboundDiff: 0,
+    strengths,
+  });
+  assert.equal(missingSportsline.baseline, 11);
+  assert.deepEqual(missingSportsline.sourcesUsed, ["dimers"]);
+  assert.equal(missingSportsline.adjustments.some((row) => row.key === "sportsline"), false);
+  assert.match(missingSportsline.flags.join(" "), /SportsLine rebounds are missing/);
+  assert.match(missingSportsline.adjustments.find((row) => row.key === "dimers")?.detail ?? "", /full rebounds baseline/);
+
+  const sportslineOnly = basePoints({ sources: [{ source: "sportsline", value: 20 }] });
+  assert.equal(sportslineOnly.baseline, 20);
+  assert.equal(sportslineOnly.adjustments.some((row) => row.key === "dimers"), false);
+  assert.doesNotMatch(sportslineOnly.flags.join(" "), /Dimers/);
+});
+
 test("insufficient recent sample is skipped and not replaced", () => {
   const projection = basePoints({ recentGames: 1, recentPerGame: 50 });
   const recent = projection.adjustments.find((a) => a.key === "recent");

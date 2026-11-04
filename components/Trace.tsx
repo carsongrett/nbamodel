@@ -7,14 +7,27 @@ function fmt(value: number | null | undefined, digits = 2): string {
 
 export default function Trace({ stat, implied, locked }: { stat: SlateStat; implied: string | null; locked: boolean }) {
   const projectionDetail = [locked ? "Locked after actuals." : null, stat.blockReason].filter(Boolean).join(" ");
+  const sportsline = stat.adjustments.find((adjustment) => adjustment.key === "sportsline");
+  const dimers = stat.adjustments.find((adjustment) => adjustment.key === "dimers");
+  const adjustments = stat.adjustments.filter((adjustment) => adjustment.key !== "sportsline" && adjustment.key !== "dimers");
+  const showSportsline = sportsline?.input != null;
   return (
     <details className="trace">
       <summary>Projection trace</summary>
       <div className="trace-body">
-        {stat.baseline != null ? (
+        {showSportsline ? (
+          <Step label="SL projection" value={fmt(sportsline?.input)} detail={null} />
+        ) : !dimers && stat.baseline != null ? (
           <Step label="SL projection" value={fmt(stat.baseline)} detail={stat.sourcesUsed.length ? stat.sourcesUsed.join(", ") : null} />
         ) : null}
-        {stat.adjustments.map((adjustment) => (
+        {dimers ? (
+          <OpenStep
+            label="Dimers"
+            value={dimers.input == null ? "missing" : fmt(dimers.input)}
+            detail={dimers.detail}
+          />
+        ) : null}
+        {adjustments.map((adjustment) => (
           <Step
             key={adjustment.key}
             label={adjustment.label}
@@ -26,6 +39,18 @@ export default function Trace({ stat, implied, locked }: { stat: SlateStat; impl
         {implied ? <Step label="Team points" value="" detail={implied} /> : null}
       </div>
     </details>
+  );
+}
+
+function OpenStep({ label, value, detail }: { label: string; value: string; detail?: string | null }) {
+  return (
+    <div>
+      <div className="step">
+        <span>{label}</span>
+        <b>{value}</b>
+      </div>
+      {detail ? <div className="detail">{detail}</div> : null}
+    </div>
   );
 }
 

@@ -193,7 +193,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
           <p className="eyebrow">2026–27 season</p>
           <h1>Today</h1>
           <DeskNav current="today" />
-          <p className="sub">{slateLabel(initialDate)}. Projections loads ESPN, Basketball Reference, SportsLine, and Hashtag. Lines loads BettingPros points and rebounds near tip-off and replaces a typed number until results are stored.</p>
+          <p className="sub">{slateLabel(initialDate)}. Projections loads ESPN, Basketball Reference, SportsLine, Dimers, and Hashtag. Lines loads BettingPros points and rebounds near tip-off and replaces a typed number until results are stored.</p>
         </div>
         <div className="top-actions">
           <button className="about-open" type="button" aria-haspopup="dialog" aria-expanded={aboutOpen} onClick={() => setAboutOpen(true)}>?</button>
@@ -280,6 +280,9 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                       <tr key={key}>
                         <td>
                           <div className="player">{row.playerName}</div>
+                          {cell.flags.filter((flag) => flag.includes("missing") && flag.includes("baseline")).map((flag) => (
+                            <div className="meta" key={flag}>{flag}</div>
+                          ))}
                           <Trace stat={cell} implied={row.impliedDetail} locked={row.locked} />
                         </td>
                         <td>{row.teamId}</td>

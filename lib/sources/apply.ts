@@ -15,12 +15,14 @@ import {
   type Team,
 } from "../engine";
 import { normalizePersonName } from "./names";
+import type { DimersFetch, DimersPlayer } from "./dimers";
 import { pageIsCurrentSeason, parseBrefPlayers, parseHashtag, parseSportsLine, parseTeamPace, type BrefPlayerRow } from "./parsers";
 import { matchupGameId } from "./teams";
 
 export const BREF = "basketball-reference";
 export const SPORTSLINE = "sportsline";
 export const HASHTAG = "hashtag";
+export const DIMERS = "dimers";
 
 export type FetchedPage = { url: string; ok: true; html: string } | { url: string; ok: false; error: string };
 
@@ -32,6 +34,8 @@ export type PublicFetch = {
   actuals: FetchedPage;
   sportsline: FetchedPage;
   hashtag: FetchedPage;
+  /** Absent on older fetches. A failed fetch keeps SportsLine as the baseline. */
+  dimers?: DimersFetch;
   retrievedAt: string;
 };
 
@@ -256,7 +260,7 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
   }
 
   const readyRoster = [...roster.values()].filter((row) => row.team && row.position);
-  messages.push({ level: "info", playerId: null, message: `Basketball Reference roster read: ${readyRoster.length}. Today's board keeps SportsLine matches only.` });
+  messages.push({ level: "info", playerId: null, message: `Basketball Reference roster read: ${readyRoster.length}. Today's board keeps SportsLine and Dimers matches.` });
 
   const recent = new Map<string, { points: number; rebounds: number; games: number }>();
   let recentDays = 0;
@@ -353,6 +357,118 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
         level: "info",
         playerId: null,
         message: `SportsLine names with no single Basketball Reference match on that team: ${unmatched.length}. ${unmatched.slice(0, 8).join(", ")}.`,
+      });
+    }
+  }
+
+  const onSlate = (gameId: string) => gameId.startsWith(`${slateDate}|`);
+  if (fetched.dimers && !fetched.dimers.ok) {
+    projections = projections.filter((row) => !(row.source === DIMERS && onSlate(row.gameId)));
+    const reason = fetched.dimers.error ? ` (${fetched.dimers.error})` : "";
+    messages.push({
+      level: "info",
+      playerId: null,
+      message: `Dimers did not load${reason}. SportsLine stays the baseline.`,
+    });
+  } else if (fetched.dimers?.ok) {
+    projections = projections.filter((row) => !(row.source === DIMERS && onSlate(row.gameId)));
+    let stored = 0;
+    const unmatched: string[] = [];
+    const covered = new Set<string>();
+    const storeDimers = (row: DimersPlayer) => {
+      if (!row.team || !row.away || !row.home) {
+        unmatched.push(row.name);
+        return;
+      }
+      const sourceId = `${row.team}|${row.name}`;
+      const mapped = idMap.find((item) => item.source === DIMERS && item.entityType === "player" && item.sourceId === sourceId);
+      const named = readyRoster.filter((player) => player.team === row.team && normalizePersonName(player.name) === normalizePersonName(row.name));
+      const rosterRow = mapped ? roster.get(mapped.canonicalId) ?? null : named.length === 1 ? named[0] : null;
+      if (!rosterRow || !rosterRow.team || !rosterRow.position) {
+        unmatched.push(row.name);
+        return;
+      }
+      ensureTeam(rosterRow.team);
+      ensureTeam(row.away);
+      ensureTeam(row.home);
+      players = upsertByKey(players, [{
+        playerId: rosterRow.playerId,
+        displayName: rosterRow.name,
+        teamId: rosterRow.team,
+        position: rosterRow.position,
+        season: CURRENT_SEASON,
+      }], (item) => item.playerId).rows;
+      remember(rosterRow.playerId);
+      idMap = upsertByKey(
+        idMap,
+        [{ source: DIMERS, entityType: "player" as const, sourceId, canonicalId: rosterRow.playerId }],
+        (item) => `${item.source}|${item.entityType}|${item.sourceId}`,
+      ).rows;
+      const gameId = matchupGameId(slateDate, row.away, row.home);
+      ensureGame({
+        gameId,
+        season: CURRENT_SEASON,
+        gameDate: slateDate,
+        homeTeamId: row.home,
+        awayTeamId: row.away,
+        status: "scheduled",
+      });
+      const projection: OutsideProjection = {
+        playerId: rosterRow.playerId,
+        gameId,
+        source: DIMERS,
+        season: CURRENT_SEASON,
+        points: row.points,
+        rebounds: row.rebounds,
+        minutes: null,
+        sourceTimestamp: fetched.retrievedAt,
+      };
+      const key = `${rosterRow.playerId}|${gameId}`;
+      const already = covered.has(key);
+      projections = upsertByKey(projections, [projection], (item) => `${item.playerId}|${item.gameId}|${item.source}`).rows;
+      covered.add(key);
+      if (!already && (row.points != null || row.rebounds != null)) stored++;
+    };
+    for (const row of fetched.dimers.players) {
+      if (row.points == null && row.rebounds == null) continue;
+      storeDimers(row);
+    }
+    let missed = 0;
+    const sportslineRows = projections.filter((row) => row.source === SPORTSLINE && onSlate(row.gameId));
+    for (const row of sportslineRows) {
+      const key = `${row.playerId}|${row.gameId}`;
+      if (covered.has(key)) continue;
+      const blank: OutsideProjection = {
+        playerId: row.playerId,
+        gameId: row.gameId,
+        source: DIMERS,
+        season: CURRENT_SEASON,
+        points: null,
+        rebounds: null,
+        minutes: null,
+        sourceTimestamp: fetched.retrievedAt,
+      };
+      projections = upsertByKey(projections, [blank], (item) => `${item.playerId}|${item.gameId}|${item.source}`).rows;
+      covered.add(key);
+      missed++;
+    }
+    messages.push({
+      level: "info",
+      playerId: null,
+      message: `Dimers round ${fetched.dimers.round} projections stored: ${stored}.`,
+    });
+    if (missed) {
+      messages.push({
+        level: "info",
+        playerId: null,
+        message: `Dimers missed ${missed} SportsLine player${missed === 1 ? "" : "s"} on this slate. SportsLine is the full baseline for those rows.`,
+      });
+    }
+    if (unmatched.length) {
+      messages.push({
+        level: "info",
+        playerId: null,
+        message: `Dimers names with no single Basketball Reference match on that team: ${unmatched.length}. ${unmatched.slice(0, 8).join(", ")}.`,
       });
     }
   }
