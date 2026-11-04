@@ -71,6 +71,7 @@ export type ProbeResult = {
   events: ParsedEvent[];
   offers: ParsedOffer[];
   furtherPages: number | null;
+  fromCache?: boolean;
 };
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -96,16 +97,19 @@ function abbreviation(value: unknown): string | null {
   return text(row.abbreviation) ?? text(row.abbr) ?? text(row.team) ?? (typeof row.team === "object" ? abbreviation(row.team) : null);
 }
 
-export function parseEventsPayload(body: string): { events: ParsedEvent[]; parsed: boolean } {
+export function parseEventsPayload(body: string): { events: ParsedEvent[]; parsed: boolean; page: number | null; totalPages: number | null } {
   let json: unknown;
   try {
     json = JSON.parse(body);
   } catch {
-    return { events: [], parsed: false };
+    return { events: [], parsed: false, page: null, totalPages: null };
   }
   const root = record(json);
   const list = Array.isArray(json) ? json : root && Array.isArray(root.events) ? root.events : null;
-  if (!list) return { events: [], parsed: false };
+  if (!list) return { events: [], parsed: false, page: null, totalPages: null };
+  const pagination = record(root?._pagination) ?? record(root?.pagination);
+  const page = num(pagination?.page);
+  const totalPages = num(pagination?.total_pages);
   const events: ParsedEvent[] = [];
   for (const item of list) {
     const row = record(item);
@@ -123,7 +127,7 @@ export function parseEventsPayload(body: string): { events: ParsedEvent[]; parse
       total: num(row.total) ?? num(row.game_total),
     });
   }
-  return { events, parsed: true };
+  return { events, parsed: true, page, totalPages };
 }
 
 function bookLine(books: unknown): { line: number | null; odds: number | null } {
@@ -151,7 +155,7 @@ export function parseOffersPage(body: string): { offers: ParsedOffer[]; parsed: 
   const root = record(json);
   const list = root && Array.isArray(root.offers) ? root.offers : null;
   if (!list) return { offers: [], parsed: false, page: null, totalPages: null, furtherPages: null };
-  const pagination = record(root?.pagination) ?? record(root?._pagination);
+  const pagination = record(root?._pagination) ?? record(root?.pagination);
   const page = num(pagination?.page);
   const total = num(pagination?.total_pages);
   const furtherPages = total == null ? null : Math.max(0, total - (page ?? 1));
@@ -225,7 +229,9 @@ export function parseGameMarket(body: string, marketId: number, home: string | n
 }
 
 const MAX_BETTINGPROS_CALLS = 40;
-const OFFER_GAP_MS = 500;
+const OFFER_GAP_MS = 1500;
+const BURST_RETRIES = 3;
+const DAILY_LIMIT_MESSAGE = "BettingPros daily limit exceeded (Limit Exceeded). It resets at midnight UTC.";
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -233,18 +239,36 @@ function wait(ms: number): Promise<void> {
   });
 }
 
-function offersUrl(eventId: string, marketId: number, page?: number): string {
-  const base = `${BETTINGPROS_BASE}/offers?sport=NBA&event_id=${encodeURIComponent(eventId)}&market_id=${marketId}&book_id=${CONSENSUS_BOOK_ID}`;
+function pageCount(total: number | null): number {
+  if (total == null || !Number.isFinite(total) || total < 1) return 1;
+  return Math.floor(total);
+}
+
+function eventsUrl(date: string, page?: number): string {
+  const base = `${BETTINGPROS_BASE}/events?sport=NBA&date=${encodeURIComponent(date)}&limit=-1`;
   return page && page > 1 ? `${base}&page=${page}` : base;
 }
 
-function stampOffers(offers: ParsedOffer[], eventId: string, marketId: number): ParsedOffer[] {
-  return offers.map((offer) => ({
-    ...offer,
-    eventId: offer.eventId ?? eventId,
-    marketId: offer.marketId ?? marketId,
-  }));
+function offersUrl(eventIds: string[], page?: number): string {
+  const ids = eventIds.map((id) => encodeURIComponent(id)).join(":");
+  const base = `${BETTINGPROS_BASE}/offers?sport=NBA&event_id=${ids}&market_id=${POINTS_MARKET_ID}:${REBOUNDS_MARKET_ID}&book_id=${CONSENSUS_BOOK_ID}&limit=-1`;
+  return page && page > 1 ? `${base}&page=${page}` : base;
 }
+
+function appendEvents(current: ParsedEvent[], extra: ParsedEvent[]): ParsedEvent[] {
+  const seen = new Set(current.map((event) => event.id));
+  const next = current.slice();
+  for (const event of extra) {
+    if (seen.has(event.id)) continue;
+    seen.add(event.id);
+    next.push(event);
+  }
+  return next;
+}
+
+type Attempt =
+  | { ok: true; body: string }
+  | { ok: false; burst: boolean; capped: boolean; message: string };
 
 export async function fetchBettingProsDay(date: string, fetchImpl?: FetchLike): Promise<ProbeResult> {
   const key = bettingProsKey();
@@ -263,161 +287,128 @@ export async function fetchBettingProsDay(date: string, fetchImpl?: FetchLike): 
     return { ok: response.ok, status: response.status, text: () => response.text() };
   });
   const headers = { "x-api-key": key, accept: "application/json" };
-  const eventsUrl = `${BETTINGPROS_BASE}/events?sport=NBA&date=${encodeURIComponent(date)}`;
-  const calls = [eventsUrl];
-  let offersRequested = 0;
-  const requestOffer = async (url: string) => {
-    if (offersRequested > 0) await wait(OFFER_GAP_MS);
-    offersRequested += 1;
+  const calls: string[] = [];
+  let offerRequests = 0;
+
+  const fetchOne = async (url: string, kind: "events" | "offers"): Promise<Attempt> => {
+    if (calls.length >= MAX_BETTINGPROS_CALLS) {
+      return { ok: false, burst: false, capped: true, message: `Stopped at ${MAX_BETTINGPROS_CALLS} calls.` };
+    }
+    if (kind === "offers" && offerRequests > 0) await wait(OFFER_GAP_MS);
+    if (kind === "offers") offerRequests += 1;
     calls.push(url);
-    return fetchPage(url, { headers });
-  };
-  let eventsResponse: { ok: boolean; status: number; text: () => Promise<string> };
-  try {
-    eventsResponse = await fetchPage(eventsUrl, { headers });
-  } catch (error) {
-    return {
-      state: "error",
-      message: error instanceof Error ? error.message : "BettingPros events call failed.",
-      calls,
-      events: [],
-      offers: [],
-      furtherPages: null,
-    };
-  }
-  const eventsBody = await eventsResponse.text();
-  if (!eventsResponse.ok) {
-    return {
-      state: "error",
-      message: `BettingPros events returned HTTP ${eventsResponse.status}. Offers was not called.`,
-      calls,
-      events: [],
-      offers: [],
-      furtherPages: null,
-    };
-  }
-  const events = parseEventsPayload(eventsBody);
-  const first = events.events[0];
-  if (!events.parsed || !first) {
-    return {
-      state: events.parsed ? "parsed" : "unparsed",
-      message: events.parsed
-        ? "Events parsed and listed no games. Offers was not called."
-        : "Events response did not match the parser. Offers was not called. Full-slate paging stays off.",
-      calls,
-      events: events.events,
-      offers: [],
-      furtherPages: null,
-    };
-  }
-  const proofUrl = offersUrl(first.id, POINTS_MARKET_ID);
-  let proofResponse: { ok: boolean; status: number; text: () => Promise<string> };
-  try {
-    proofResponse = await requestOffer(proofUrl);
-  } catch (error) {
-    return {
-      state: "error",
-      message: error instanceof Error ? error.message : "BettingPros offers call failed.",
-      calls,
-      events: events.events,
-      offers: [],
-      furtherPages: null,
-    };
-  }
-  const proofBody = await proofResponse.text();
-  if (!proofResponse.ok) {
-    return {
-      state: "error",
-      message: `BettingPros offers returned HTTP ${proofResponse.status}. Stopped before any other odds calls.`,
-      calls,
-      events: events.events,
-      offers: [],
-      furtherPages: null,
-    };
-  }
-  const proof = parseOffersPage(proofBody);
-  if (!proof.parsed) {
-    return {
-      state: "unparsed",
-      message: "Offers page did not match the parser. Stopped before any other odds calls.",
-      calls,
-      events: events.events,
-      offers: [],
-      furtherPages: null,
-    };
-  }
-
-  const offers = stampOffers(proof.offers, first.id, POINTS_MARKET_ID);
-  let unread = 0;
-  let stopped = "";
-  let halt = false;
-
-  const pull = async (eventId: string, marketId: number, page: number) => {
-    const url = offersUrl(eventId, marketId, page);
+    let response: { ok: boolean; status: number; text: () => Promise<string> };
     try {
-      const response = await requestOffer(url);
-      const body = await response.text();
-      return { ok: response.ok, status: response.status, body };
+      response = await fetchPage(url, { headers });
     } catch (error) {
-      return { ok: false, status: 0, body: error instanceof Error ? error.message : "BettingPros offers call failed." };
+      const fallback = kind === "events" ? "BettingPros events call failed." : "BettingPros offers call failed.";
+      return { ok: false, burst: false, capped: false, message: error instanceof Error ? error.message : fallback };
+    }
+    const body = await response.text();
+    if (response.ok) return { ok: true, body };
+    if (response.status === 429 && body.includes("Limit Exceeded")) {
+      return { ok: false, burst: false, capped: false, message: DAILY_LIMIT_MESSAGE };
+    }
+    if (response.status === 429 && body.includes("Too Many Requests")) {
+      return { ok: false, burst: true, capped: false, message: "BettingPros returned Too Many Requests." };
+    }
+    const firstEventsFailure = kind === "events" && calls.filter((item) => item.includes("/events")).length === 1;
+    if (firstEventsFailure) {
+      return { ok: false, burst: false, capped: false, message: `BettingPros events returned HTTP ${response.status}. Offers was not called.` };
+    }
+    return { ok: false, burst: false, capped: false, message: `Stopped after HTTP ${response.status}.` };
+  };
+
+  const fetchWithRetry = async (url: string, kind: "events" | "offers"): Promise<Attempt> => {
+    let retries = 0;
+    for (;;) {
+      const attempt = await fetchOne(url, kind);
+      if (attempt.ok || !attempt.burst || retries >= BURST_RETRIES) {
+        if (!attempt.ok && attempt.burst) {
+          return { ok: false, burst: true, capped: false, message: "BettingPros returned Too Many Requests. Stopped after retrying that page." };
+        }
+        return attempt;
+      }
+      retries += 1;
+      if (kind === "events") await wait(OFFER_GAP_MS);
     }
   };
 
-  for (const event of events.events) {
-    if (halt) break;
-    for (const marketId of [POINTS_MARKET_ID, REBOUNDS_MARKET_ID]) {
-      const known = event.id === first.id && marketId === POINTS_MARKET_ID ? proof : null;
-      let totalPages = known ? (known.totalPages ?? 1) : null;
-      for (let page = known ? 2 : 1; totalPages == null || page <= totalPages; page += 1) {
-        if (calls.length >= MAX_BETTINGPROS_CALLS) {
-          unread += totalPages == null ? 1 : Math.max(0, totalPages - page + 1);
-          stopped = `Stopped at ${MAX_BETTINGPROS_CALLS} calls.`;
-          halt = true;
-          break;
-        }
-        const response = await pull(event.id, marketId, page);
-        if (!response.ok) {
-          stopped = response.status ? `Stopped after HTTP ${response.status}.` : `Stopped: ${response.body}`;
-          halt = true;
-          break;
-        }
-        const parsed = parseOffersPage(response.body);
-        if (!parsed.parsed) {
-          stopped = "A later offers page did not match the parser, so paging stopped.";
-          halt = true;
-          break;
-        }
-        if (page > 1 && parsed.page === 1) {
-          stopped = "Paging stopped because an offers page still reported page 1.";
-          halt = true;
-          break;
-        }
-        if (totalPages == null) totalPages = parsed.totalPages ?? 1;
-        offers.push(...stampOffers(parsed.offers, event.id, marketId));
-        if (page >= totalPages) break;
-      }
-      if (halt) break;
+  const failed = (message: string, events: ParsedEvent[], offers: ParsedOffer[], furtherPages: number | null): ProbeResult => ({
+    state: "error",
+    message,
+    calls,
+    events,
+    offers,
+    furtherPages,
+  });
+
+  let events: ParsedEvent[] = [];
+  let totalEventPages = 1;
+  for (let page = 1; page <= totalEventPages; page += 1) {
+    const attempt = await fetchWithRetry(eventsUrl(date, page), "events");
+    if (!attempt.ok) return failed(attempt.message, events, [], null);
+    const parsed = parseEventsPayload(attempt.body);
+    if (!parsed.parsed) {
+      return {
+        state: "unparsed",
+        message: "Events response did not match the parser. Offers was not called. Full-slate paging stays off.",
+        calls,
+        events,
+        offers: [],
+        furtherPages: null,
+      };
     }
-    if (halt) break;
+    if (page > 1 && parsed.page === 1) {
+      return failed("Paging stopped because an events page still reported page 1.", events, [], null);
+    }
+    events = appendEvents(events, parsed.events);
+    if (page === 1) totalEventPages = pageCount(parsed.totalPages);
+  }
+  if (!events.length) {
+    return {
+      state: "parsed",
+      message: "Events parsed and listed no games. Offers was not called.",
+      calls,
+      events,
+      offers: [],
+      furtherPages: null,
+    };
   }
 
-  if (stopped) {
-    return {
-      state: "error",
-      message: stopped,
-      calls,
-      events: events.events,
-      offers,
-      furtherPages: unread,
-    };
+  const eventIds = events.map((event) => event.id);
+  const offers: ParsedOffer[] = [];
+  let totalOfferPages = 1;
+  for (let page = 1; page <= totalOfferPages; page += 1) {
+    const attempt = await fetchWithRetry(offersUrl(eventIds, page), "offers");
+    const remaining = Math.max(0, totalOfferPages - page + 1);
+    if (!attempt.ok) return failed(attempt.message, events, offers, remaining);
+    const parsed = parseOffersPage(attempt.body);
+    if (!parsed.parsed) {
+      return {
+        state: page === 1 ? "unparsed" : "error",
+        message: page === 1
+          ? "Offers page did not match the parser. Stopped before any other odds calls."
+          : "A later offers page did not match the parser, so paging stopped.",
+        calls,
+        events,
+        offers,
+        furtherPages: remaining,
+      };
+    }
+    if (page > 1 && parsed.page === 1) {
+      return failed("Paging stopped because an offers page still reported page 1.", events, offers, Math.max(0, totalOfferPages - page));
+    }
+    if (page === 1) totalOfferPages = pageCount(parsed.totalPages);
+    offers.push(...parsed.offers);
   }
   return {
     state: "parsed",
-    message: `Loaded ${events.events.length} events and ${offers.length} consensus lines for ${date}.`,
+    message: `Loaded ${events.length} events and ${offers.length} consensus lines for ${date}.`,
     calls,
-    events: events.events,
+    events,
     offers,
-    furtherPages: unread,
+    furtherPages: 0,
   };
 }
 
