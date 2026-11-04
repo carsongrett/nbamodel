@@ -52,6 +52,24 @@ button:disabled { opacity: 0.55; cursor: wait; }
 .summary span { display: block; color: var(--muted); font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; }
 .summary strong { font-variant-numeric: tabular-nums; font-size: 22px; }
 
+.line-distance { margin: 0 0 14px; }
+.line-distance h2 { margin: 0 0 4px; font-size: 16px; }
+.line-distance .meta { margin: 0 0 8px; }
+.line-distance-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.line-distance-row div {
+  display: grid;
+  grid-template-columns: auto auto;
+  column-gap: 8px;
+  align-items: baseline;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+.line-distance-row span { color: var(--muted); font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; }
+.line-distance-row span:first-child { grid-column: 1 / -1; }
+.line-distance-row strong { font-variant-numeric: tabular-nums; font-size: 16px; }
+
 .board-note { margin: 0 0 8px; }
 .game-list { display: grid; gap: 10px; }
 .game {
