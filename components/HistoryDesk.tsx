@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Grade, SlateView, Stat } from "../lib/engine";
+import type { SlateView, Stat } from "../lib/engine";
+import {
+  HISTORY_RESULT_OPTIONS,
+  applyHistoryFilters,
+  historyResultFilter,
+  historyResultText,
+  type HistoryResultFilter,
+} from "../lib/history";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
 import Trace from "./Trace";
@@ -51,14 +58,8 @@ function savedWhen(iso: string | null): string {
   }).format(date)}`;
 }
 
-function gradeLabel(grade: Grade): string {
-  if (grade === "win") return "Win";
-  if (grade === "loss") return "Loss";
-  if (grade === "push") return "Push";
-  if (grade === "no_pick") return "No pick";
-  if (grade === "dnp") return "DNP";
-  if (grade === "unresolved") return "Unresolved";
-  return "Not saved";
+function pointsLabel(threshold: number): string {
+  return threshold === 1 ? "At least 1 point" : `At least ${threshold} points`;
 }
 
 export default function HistoryDesk({ today, authConfigured }: { today: string; authConfigured: boolean }) {
@@ -67,6 +68,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
   const [stat, setStat] = useState<Stat>("points");
   const [gameId, setGameId] = useState("");
   const [teamId, setTeamId] = useState("");
+  const [result, setResult] = useState<HistoryResultFilter>("all");
   const [payload, setPayload] = useState<Payload | null>(null);
   const [status, setStatus] = useState("Loading earlier slates.");
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -114,9 +116,11 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
   }, [date]);
 
   const slate = payload?.slate;
-  const rows = useMemo(() => {
-    return (slate?.rows ?? []).filter((row) => (gameId ? row.gameId === gameId : true) && (teamId ? row.teamId === teamId : true));
-  }, [slate, gameId, teamId]);
+  const view = useMemo(
+    () => applyHistoryFilters(slate?.rows ?? [], { gameId, teamId, stat, result }),
+    [slate, gameId, teamId, stat, result],
+  );
+  const rows = view.rows;
   const summary = slate?.summaries[stat];
 
   return (
@@ -175,6 +179,12 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                 {STATS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
               </select>
             </label>
+            <label>
+              Result
+              <select value={result} onChange={(event) => setResult(historyResultFilter(event.target.value))}>
+                {HISTORY_RESULT_OPTIONS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+              </select>
+            </label>
           </div>
 
           <section className="status" aria-live="polite">
@@ -189,6 +199,22 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
               <div><span>Pushes</span><strong>{summary.pushes}</strong></div>
               <div><span>Mean abs. error</span><strong>{fmt(summary.meanAbsoluteError, 2)}</strong></div>
             </div>
+          ) : null}
+
+          {slate ? (
+            <section className="line-distance" aria-label="Hit rate by distance from the line">
+              <h2>Distance from the line</h2>
+              <p className="meta">Wins and losses in this filter. Distance is how far the projection sits from the line, above or below.</p>
+              <div className="line-distance-row">
+                {view.distance.map((group) => (
+                  <div key={group.threshold} role="group" aria-label={`${pointsLabel(group.threshold)}: ${group.wins} wins, ${group.losses} losses, hit rate ${pct(group.hitRate)}`}>
+                    <span>{pointsLabel(group.threshold)}</span>
+                    <strong>{group.wins}-{group.losses}</strong>
+                    <span>{pct(group.hitRate)}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
           ) : null}
 
           <div className="table-wrap">
@@ -230,7 +256,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                       <td className="num">{archived ? fmt(cell.line, 1) : "—"}</td>
                       <td className="num">{fmt(cell.actual, 1)}</td>
                       <td className="num">{archived ? fmt(cell.error) : "—"}</td>
-                      <td><span className={`grade ${archived ? cell.grade : "ungraded"}`}>{archived ? gradeLabel(cell.grade) : "Not saved"}</span></td>
+                      <td><span className={`grade ${archived ? cell.grade : "ungraded"}`}>{historyResultText(cell)}</span></td>
                     </tr>
                   );
                 })}
