@@ -46,7 +46,7 @@ const SETTING_FIELDS: { key: keyof Settings; label: string; min: number; max: nu
   { key: "recentReboundsStrength", label: "Recent rebounds", min: 1, max: 30, step: 0.5, example: (value) => `Last 15 is 1.00 rebound above SportsLine. ${shiftText(1, value)}` },
   { key: "minutesPointsStrength", label: "Minutes points", min: 1, max: 30, step: 0.5, example: (value) => `The minutes share is 1.50 above the line. ${shiftText(1.5, value)}` },
   { key: "minutesReboundsStrength", label: "Minutes rebounds", min: 1, max: 30, step: 0.5, example: (value) => `Rebounds per minute are 1.00 above SportsLine. ${shiftText(1, value)}` },
-  { key: "oppReboundsStrength", label: "Opponent rebounds", min: 1, max: 30, step: 0.5, example: (value) => `Not in the live formula. A 1.00 gap would have been ${(1 / value).toFixed(2)} at this divisor, and the projection does not move.` },
+  { key: "oppReboundsStrength", label: "Opponent rebounds", min: 1, max: 30, step: 0.5, example: (value) => `Opponent allows 1.00 more rebound than the league blend. ${shiftText(1, value)}` },
   { key: "minRecentGames", label: "Minimum recent games", min: 1, max: 15, step: 1, example: (value) => `This player has 4 recent games. At ${scaleText(value)}, last 15 ${value <= 4 ? "counts" : "is skipped"}.` },
   { key: "minRateGames", label: "Minimum rate-sample games", min: 1, max: 30, step: 1, example: (value) => `This player has 10 games of usage. At ${scaleText(value)}, the rate ${value <= 10 ? "counts" : "is skipped"}.` },
 ];
@@ -193,7 +193,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
           <p className="eyebrow">2026–27 season</p>
           <h1>Today</h1>
           <DeskNav current="today" />
-          <p className="sub">{slateLabel(initialDate)}. Projections loads ESPN, Basketball Reference, SportsLine, Dimers, and Hashtag. Lines loads BettingPros points and rebounds near tip-off and replaces a typed number until results are stored.</p>
+          <p className="sub">{slateLabel(initialDate)}. Projections loads ESPN, Basketball Reference, SportsLine, Dimers, FantasyPros, and TeamRankings. Lines loads BettingPros points and rebounds near tip-off and replaces a typed number until results are stored.</p>
         </div>
         <div className="top-actions">
           <button className="about-open" type="button" aria-haspopup="dialog" aria-expanded={aboutOpen} onClick={() => setAboutOpen(true)}>?</button>

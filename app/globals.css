@@ -189,7 +189,7 @@ details.step-line > summary::marker { content: ""; }
 }
 .about-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .about-head h2 { margin: 0; font-size: 28px; }
-.source-board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
+.source-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 14px 0; }
 .source-card, .math-box {
   background: var(--card);
   border: 1px solid var(--line);

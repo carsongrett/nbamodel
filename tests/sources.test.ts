@@ -3,21 +3,31 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { applyModelRun, buildSlate, CURRENT_SEASON, emptyDatabase, setPropLine, type Player } from "../lib/engine.ts";
+import { applyModelRun, buildSlate, CURRENT_SEASON, defenseVsPosition, dvpWindowNote, emptyDatabase, opponentReboundDiffs, setPropLine, weightedDvp, weightedOppReboundDiff, type Player } from "../lib/engine.ts";
 import { applyPublicPages, stripSample, type FetchedPage, type PublicFetch } from "../lib/sources/apply.ts";
 import { applyBettingProsProbe } from "../lib/sources/apply-bettingpros.ts";
 import { fetchBettingProsDay, parseGameMarket, type ProbeResult } from "../lib/sources/bettingpros.ts";
-import { collectLines, collectProjectionSources, commitLines, commitProjections } from "../lib/sources/daily-run.ts";
+import { collectLines, collectProjectionSources, commitLines, commitProjections, FANTASYPROS_DVP_URL, TEAMRANKINGS_OPP_REBOUNDS_URL } from "../lib/sources/daily-run.ts";
 import { fetchDimersSlate, probeRoundNumbers } from "../lib/sources/dimers.ts";
 import { applyEspnOdds, parseEspnOdds } from "../lib/sources/espn.ts";
 import { parseEnvText, readProjectEnv } from "../lib/sources/env-file.ts";
-import { parseSportsLine } from "../lib/sources/parsers.ts";
-import { canonicalTeam } from "../lib/sources/teams.ts";
+import { parseFanduelDefense, parseSportsLine, parseTeamRankingsOppRebounds } from "../lib/sources/parsers.ts";
+import { canonicalTeam, teamFromLabel } from "../lib/sources/teams.ts";
 
 const retrievedAt = "2026-11-02T18:00:00.000Z";
 
 function page(html: string): FetchedPage {
   return { url: "https://example.test", ok: true, html };
+}
+
+function fanduelHtml(rows: { window: "GC-15" | "GC-30"; abbr: string; pos: string; points: string; rebounds: string }[]): string {
+  const body = rows.map((row) => `<tr style="display:none;" class="${row.window} ${row.pos}"><td class="left team-cell"><span class="team-logo team-logo--circle nba-${row.abbr}">${row.abbr.toUpperCase()}</span></td><td class="center"><b>8</b></td><td class="center"><b>${row.points}</b></td><td class="center"><b>${row.rebounds}</b></td></tr>`).join("");
+  return `2026-2027<table><thead><tr><th>Team</th><th>GP</th><th>PTS</th><th>REB</th><th>AST</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function teamRankingsHtml(rows: [string, string, string][]): string {
+  const body = rows.map(([name, season, last3]) => `<tr><td class="rank">1</td><td data-sort="${name}"><a href="https://www.teamrankings.com/nba/team/${name.toLowerCase()}">${name}</a></td><td data-sort="${season}">${season}</td><td data-sort="99">${last3}</td><td>1.0</td><td>2.0</td><td>3.0</td><td>4.0</td></tr>`).join("");
+  return `2026-2027<table class="tr-table datatable scrollable"><thead><tr><th>Rank</th><th>Team</th><th>2026</th><th>Last 3</th><th>Last 1</th><th>Home</th><th>Away</th><th>2025</th></tr></thead><tbody>${body}</tbody></table>`;
 }
 
 function failed(error: string): FetchedPage {
@@ -72,11 +82,16 @@ function bundle(overrides: Partial<PublicFetch> = {}): PublicFetch {
     </tr></thead><tbody><tr>
       <td>Luka Doncic</td><td>LAL</td><td>TOR@LAL</td><td>1</td><td>32.3</td><td>36</td><td>8</td>
     </tr></tbody></table>`),
-    hashtag: page(`2026-27<table id="ContentPlaceHolder1_GridView1"><tr>
-      <td>PG</td><td><span id="Label1">LAL</span></td><td><span id="Label2">20</span></td><td>1</td><td>1</td><td>1</td><td><span id="Label6">4</span></td>
-    </tr><tr>
-      <td>PG</td><td><span id="Label1b">BOS</span></td><td><span id="Label2b">30</span></td><td>1</td><td>1</td><td>1</td><td><span id="Label6b">8</span></td>
-    </tr></table>`),
+    fantasypros: page(fanduelHtml([
+      { window: "GC-15", abbr: "lal", pos: "PG", points: "20", rebounds: "4" },
+      { window: "GC-30", abbr: "lal", pos: "PG", points: "20", rebounds: "4" },
+      { window: "GC-15", abbr: "bos", pos: "PG", points: "30", rebounds: "8" },
+      { window: "GC-30", abbr: "bos", pos: "PG", points: "30", rebounds: "8" },
+    ])),
+    teamrankings: page(teamRankingsHtml([
+      ["Portland", "47.0", "50.7"],
+      ["Houston", "40.0", "40.0"],
+    ])),
     retrievedAt,
     ...overrides,
   };
@@ -725,11 +740,15 @@ test("a failed Dimers fetch keeps the SportsLine baseline and notes the miss", a
     if (url.includes("dailyleaders")) return { ok: true, status: 200, text: async () => "<table></table>" };
     if (url.includes("NBA_2027.html")) return { ok: true, status: 200, text: async () => pages.pace.ok ? pages.pace.html : "" };
     if (url.includes("sportsline")) return { ok: true, status: 200, text: async () => pages.sportsline.ok ? pages.sportsline.html : "" };
-    if (url.includes("hashtagbasketball")) return { ok: true, status: 200, text: async () => pages.hashtag.ok ? pages.hashtag.html : "" };
+    if (url === FANTASYPROS_DVP_URL) return { ok: true, status: 200, text: async () => pages.fantasypros.ok ? pages.fantasypros.html : "" };
+    if (url === TEAMRANKINGS_OPP_REBOUNDS_URL) return { ok: true, status: 200, text: async () => pages.teamrankings.ok ? pages.teamrankings.html : "" };
     return { ok: false, status: 404, text: async () => "" };
   });
   assert.equal(collected.ok, true);
   assert.equal(urls.some((url) => url.includes("bettingpros") || url.includes("/events")), false);
+  assert.equal(urls.includes(FANTASYPROS_DVP_URL), true);
+  assert.equal(urls.includes(TEAMRANKINGS_OPP_REBOUNDS_URL), true);
+  assert.equal(urls.some((url) => url.includes("hashtagbasketball")), false);
   assert.equal(urls.some((url) => url.includes("round/options")), true);
   if (!collected.ok) return;
   assert.equal(collected.fetched.dimers?.ok, false);
@@ -755,4 +774,97 @@ test("a failed Dimers fetch keeps the SportsLine baseline and notes the miss", a
   const luka = slate.rows.find((row) => row.playerId === "doncilu01");
   assert.equal(luka?.stats.points.baseline, 32.3);
   assert.equal(luka?.stats.points.adjustments.some((row) => row.key === "dimers"), false);
+});
+
+test("teamrankings blends opponent rebounds 85 percent season and 15 percent last 3", () => {
+  assert.equal(teamFromLabel("Portland"), "POR");
+  assert.equal(teamFromLabel("Okla City"), "OKC");
+  assert.equal(teamFromLabel("LA Clippers"), "LAC");
+  assert.equal(teamFromLabel("LA Lakers"), "LAL");
+  assert.equal(teamFromLabel("NOR"), "NOP");
+  const html = teamRankingsHtml([
+    ["Portland", "47.0", "50.7"],
+    ["Houston", "40.0", "40.0"],
+  ]);
+  const parsed = parseTeamRankingsOppRebounds(html);
+  const portland = parsed.find((row) => row.team === "POR");
+  assert.equal(portland?.season, 47);
+  assert.equal(portland?.last3, 50.7);
+  const blend = weightedOppReboundDiff(47, 50.7, 0);
+  assert.equal(blend, 47 * 0.85 + 50.7 * 0.15);
+  const diffs = opponentReboundDiffs(parsed.map((row) => ({ teamId: row.team, season: row.season, last3: row.last3 })));
+  const league = (blend + 40) / 2;
+  assert.equal(diffs.find((row) => row.teamId === "POR")?.reboundDiff, weightedOppReboundDiff(47, 50.7, league));
+
+  const sportslineHtml = `<table><thead><tr>
+    <th id="PLAYER">PLAYER</th><th id="TEAM">TEAM</th><th id="GAME">GAME</th>
+    <th id="PTS">PTS</th><th id="MIN">MIN</th><th id="TRB">TRB</th>
+  </tr></thead><tbody><tr>
+    <td>Luka Doncic</td><td>LAL</td><td>LAL@POR</td><td>32.3</td><td>36</td><td>8</td>
+  </tr></tbody></table>`;
+  const applied = applyPublicPages(emptyDatabase(), "2026-11-02", bundle({
+    sportsline: page(sportslineHtml),
+    actuals: page("<table></table>"),
+    teamrankings: page(html),
+  }));
+  assert.equal(applied.messages.some((item) => item.level === "error"), false);
+  const slate = buildSlate(applied.db, "2026-11-02");
+  const luka = slate.rows.find((row) => row.playerId === "doncilu01");
+  const term = luka?.stats.rebounds.adjustments.find((row) => row.key === "opp_rebounds");
+  assert.equal(term?.status, "applied");
+  assert.equal(term?.delta, weightedOppReboundDiff(47, 50.7, league) / 10);
+  assert.match(term?.detail ?? "", /league blend/);
+});
+
+test("fantasypros blends last 30 at 30 percent and last 15 at 70 percent", () => {
+  const html = fanduelHtml([
+    { window: "GC-30", abbr: "tor", pos: "PG", points: "30", rebounds: "10" },
+    { window: "GC-15", abbr: "tor", pos: "PG", points: "20", rebounds: "6" },
+    { window: "GC-30", abbr: "bos", pos: "PG", points: "10", rebounds: "4" },
+    { window: "GC-15", abbr: "bos", pos: "PG", points: "10", rebounds: "2" },
+  ]);
+  const parsed = parseFanduelDefense(html);
+  assert.equal(parsed.l30.find((row) => row.team === "TOR")?.points, 30);
+  assert.equal(parsed.l15.find((row) => row.team === "TOR")?.rebounds, 6);
+  const diffs = defenseVsPosition(
+    parsed.l30.map((row) => ({ teamId: row.team, position: row.position, points: row.points, rebounds: row.rebounds })),
+    parsed.l15.map((row) => ({ teamId: row.team, position: row.position, points: row.points, rebounds: row.rebounds })),
+  );
+  const tor = diffs.find((row) => row.teamId === "TOR");
+  const points30 = 30 - 20;
+  const points15 = 20 - 15;
+  assert.equal(points30 * 0.3 + points15 * 0.7, weightedDvp(points30, points15));
+  assert.equal(tor?.pointsDiff, weightedDvp(points30, points15));
+  assert.equal(tor?.pointsWindow, "both");
+  assert.equal(tor?.reboundsDiff, weightedDvp(10 - 7, 6 - 4));
+  assert.equal(tor?.reboundsWindow, "both");
+});
+
+test("a missing fantasypros window uses the window that exists and notes it", () => {
+  const html = fanduelHtml([
+    { window: "GC-15", abbr: "tor", pos: "PG", points: "20", rebounds: "8" },
+    { window: "GC-15", abbr: "bos", pos: "PG", points: "10", rebounds: "4" },
+  ]);
+  const parsed = parseFanduelDefense(html);
+  assert.equal(parsed.l30.length, 0);
+  assert.equal(parsed.l15.length, 2);
+  const applied = applyPublicPages(emptyDatabase(), "2026-11-02", bundle({
+    fantasypros: page(html),
+    actuals: page("<table></table>"),
+  }));
+  const tor = applied.db.dvp.find((row) => row.teamId === "TOR" && row.position === "PG");
+  assert.equal(tor?.pointsDiff, 5);
+  assert.equal(tor?.reboundsDiff, 2);
+  assert.equal(tor?.pointsWindow, "l15");
+  assert.equal(dvpWindowNote(tor?.pointsWindow), "Last 30 was missing. Last 15 is the defense vs position number.");
+  const slate = buildSlate(applied.db, "2026-11-02");
+  const luka = slate.rows.find((row) => row.playerId === "doncilu01");
+  const points = luka?.stats.points.adjustments.find((row) => row.key === "dvp");
+  const rebounds = luka?.stats.rebounds.adjustments.find((row) => row.key === "dvp");
+  assert.equal(points?.status, "applied");
+  assert.equal(points?.delta, 5 / 2);
+  assert.match(points?.detail ?? "", /Last 30 was missing/);
+  assert.match(points?.detail ?? "", /Last 15 is the defense vs position number/);
+  assert.equal(rebounds?.delta, 2 / 2);
+  assert.match(rebounds?.detail ?? "", /Last 30 was missing/);
 });

@@ -26,6 +26,7 @@ import {
   summarize,
   updateSettings,
   upsertByKey,
+  mergeSettings,
   weightedDvp,
   weightedOppReboundDiff,
   weightedPace,
@@ -267,6 +268,47 @@ test("rebounds minutes use per-minute times minutes, and P+R adds the two projec
   assert.equal(combined.projection, (points.projection ?? 0) + (rebounds.projection ?? 0));
   const blocked = projectPointsPlusRebounds(basePoints({ sources: [] }), rebounds);
   assert.equal(blocked.status, "blocked");
+});
+
+test("new default divisors apply when nothing was saved, and a saved divisor stays", () => {
+  assert.equal(DEFAULT_SETTINGS.dvpPointsStrength, 2);
+  assert.equal(DEFAULT_SETTINGS.dvpReboundsStrength, 2);
+  assert.equal(DEFAULT_SETTINGS.minutesPointsStrength, 3);
+  assert.equal(DEFAULT_SETTINGS.minutesReboundsStrength, 2);
+  assert.deepEqual(mergeSettings(null), DEFAULT_SETTINGS);
+  const saved = mergeSettings({
+    dvpPointsStrength: 2.5,
+    dvpReboundsStrength: 2.5,
+    minutesPointsStrength: 3.5,
+    minutesReboundsStrength: 2.5,
+  });
+  assert.equal(saved.dvpPointsStrength, 2.5);
+  assert.equal(saved.dvpReboundsStrength, 2.5);
+  assert.equal(saved.minutesPointsStrength, 3.5);
+  assert.equal(saved.minutesReboundsStrength, 2.5);
+  assert.equal(saved.oppReboundsStrength, DEFAULT_SETTINGS.oppReboundsStrength);
+  const partial = mergeSettings({ minutesPointsStrength: 3.5 });
+  assert.equal(partial.minutesPointsStrength, 3.5);
+  assert.equal(partial.dvpPointsStrength, 2);
+  assert.equal(partial.dvpReboundsStrength, 2);
+  assert.equal(partial.minutesReboundsStrength, 2);
+  const points = basePoints({ dvpDiff: 1, strengths: mergeSettings(undefined) });
+  assert.equal(points.adjustments.find((row) => row.key === "dvp")?.delta, 1 / 2);
+  const rebounds = projectRebounds({
+    sources: [{ source: "sportsline", value: 8 }],
+    projectedMinutes: 30,
+    rebPerMinute: 0.2,
+    rebPerMinuteGames: 10,
+    recentPerGame: 8,
+    recentGames: 5,
+    dvpDiff: 1,
+    paceDiff: 0,
+    oppReboundDiff: 1,
+    strengths: mergeSettings({}),
+  });
+  assert.equal(rebounds.adjustments.find((row) => row.key === "dvp")?.delta, 1 / 2);
+  assert.equal(rebounds.adjustments.find((row) => row.key === "minutes")?.delta, (0.2 * 30 - 8) / 2);
+  assert.equal(rebounds.adjustments.find((row) => row.key === "opp_rebounds")?.delta, 1 / 10);
 });
 
 test("workbook input weights", () => {

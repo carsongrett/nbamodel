@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { canonicalizeDatabase, emptyDatabase, type Actual, type Database, type Dvp, type Finding, type Game, type IdMap, type MinutesOverride, type OppRebound, type OutsideProjection, type PaceRow, type Player, type PlayerRate, type PregameStat, type PropLine, type Settings, type Team, type Vegas, DEFAULT_SETTINGS } from "./engine";
+import { canonicalizeDatabase, emptyDatabase, mergeSettings, type Actual, type Database, type Dvp, type DvpWindow, type Finding, type Game, type IdMap, type MinutesOverride, type OppRebound, type OutsideProjection, type PaceRow, type Player, type PlayerRate, type PregameStat, type PropLine, type Settings, type Team, type Vegas } from "./engine";
 
 export type StorageMode = "local" | "supabase";
 
@@ -53,7 +53,7 @@ class FileStore implements Store {
     try {
       const text = await readFile(this.file, "utf8");
       const parsed = JSON.parse(text) as Database;
-      return { ...emptyDatabase(), ...parsed, settings: { ...DEFAULT_SETTINGS, ...parsed.settings } };
+      return { ...emptyDatabase(), ...parsed, settings: mergeSettings(parsed.settings) };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyDatabase();
       throw error;
@@ -168,6 +168,8 @@ class SupabaseStore implements Store {
         season: String(row.season),
         pointsDiff: num(row.points_diff),
         reboundsDiff: num(row.rebounds_diff),
+        pointsWindow: dvpWindow(row.points_window),
+        reboundsWindow: dvpWindow(row.rebounds_window),
         sourceTimestamp: str(row.source_timestamp),
       })),
       pace: pace.map((row) => ({
@@ -191,19 +193,19 @@ class SupabaseStore implements Store {
         total: num(row.total) ?? 0,
         sourceTimestamp: str(row.source_timestamp),
       })),
-      settings: {
-        dvpPointsStrength: num(settingRow.dvp_points_strength) ?? DEFAULT_SETTINGS.dvpPointsStrength,
-        dvpReboundsStrength: num(settingRow.dvp_rebounds_strength) ?? DEFAULT_SETTINGS.dvpReboundsStrength,
-        pacePointsStrength: num(settingRow.pace_points_strength) ?? DEFAULT_SETTINGS.pacePointsStrength,
-        paceReboundsStrength: num(settingRow.pace_rebounds_strength) ?? DEFAULT_SETTINGS.paceReboundsStrength,
-        recentPointsStrength: num(settingRow.recent_points_strength) ?? DEFAULT_SETTINGS.recentPointsStrength,
-        recentReboundsStrength: num(settingRow.recent_rebounds_strength) ?? DEFAULT_SETTINGS.recentReboundsStrength,
-        minutesPointsStrength: num(settingRow.minutes_points_strength) ?? DEFAULT_SETTINGS.minutesPointsStrength,
-        minutesReboundsStrength: num(settingRow.minutes_rebounds_strength) ?? DEFAULT_SETTINGS.minutesReboundsStrength,
-        oppReboundsStrength: num(settingRow.opp_rebounds_strength) ?? DEFAULT_SETTINGS.oppReboundsStrength,
-        minRecentGames: num(settingRow.min_recent_games) ?? DEFAULT_SETTINGS.minRecentGames,
-        minRateGames: num(settingRow.min_rate_games) ?? DEFAULT_SETTINGS.minRateGames,
-      },
+      settings: mergeSettings({
+        dvpPointsStrength: num(settingRow.dvp_points_strength) ?? undefined,
+        dvpReboundsStrength: num(settingRow.dvp_rebounds_strength) ?? undefined,
+        pacePointsStrength: num(settingRow.pace_points_strength) ?? undefined,
+        paceReboundsStrength: num(settingRow.pace_rebounds_strength) ?? undefined,
+        recentPointsStrength: num(settingRow.recent_points_strength) ?? undefined,
+        recentReboundsStrength: num(settingRow.recent_rebounds_strength) ?? undefined,
+        minutesPointsStrength: num(settingRow.minutes_points_strength) ?? undefined,
+        minutesReboundsStrength: num(settingRow.minutes_rebounds_strength) ?? undefined,
+        oppReboundsStrength: num(settingRow.opp_rebounds_strength) ?? undefined,
+        minRecentGames: num(settingRow.min_recent_games) ?? undefined,
+        minRateGames: num(settingRow.min_rate_games) ?? undefined,
+      }),
       overrides: overrides.map((row) => ({ playerId: String(row.player_id), gameId: String(row.game_id), minutes: num(row.minutes) ?? 0 })),
       pregame: pregame.map((row) => ({
         playerId: String(row.player_id),
@@ -277,10 +279,23 @@ class SupabaseStore implements Store {
       recent_points_per_game: row.recentPointsPerGame, recent_rebounds_per_game: row.recentReboundsPerGame,
       recent_games: row.recentGames, source_timestamp: row.sourceTimestamp,
     })), ["player_id"]);
-    await this.replace("dvp", db.dvp.map((row) => ({
-      team_id: row.teamId, position: row.position, season: row.season, points_diff: row.pointsDiff,
-      rebounds_diff: row.reboundsDiff, source_timestamp: row.sourceTimestamp,
-    })), ["team_id", "position"]);
+    const dvpRows = db.dvp.map((row) => ({
+      team_id: row.teamId,
+      position: row.position,
+      season: row.season,
+      points_diff: row.pointsDiff,
+      rebounds_diff: row.reboundsDiff,
+      points_window: row.pointsWindow ?? null,
+      rebounds_window: row.reboundsWindow ?? null,
+      source_timestamp: row.sourceTimestamp,
+    }));
+    try {
+      await this.replace("dvp", dvpRows, ["team_id", "position"]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (!message.includes("points_window") && !message.includes("rebounds_window")) throw error;
+      await this.replace("dvp", dvpRows.map(({ points_window: _points, rebounds_window: _rebounds, ...row }) => row), ["team_id", "position"]);
+    }
     await this.replace("pace", db.pace.map((row: PaceRow) => ({
       team_id: row.teamId, season: row.season, pace: row.pace, pace_diff: row.paceDiff, source_timestamp: row.sourceTimestamp,
     })), ["team_id"]);
@@ -343,6 +358,10 @@ class SupabaseStore implements Store {
       if (error) throw new Error(`${table}: ${error.message}`);
     }
   }
+}
+
+function dvpWindow(value: unknown): DvpWindow | null {
+  return value === "both" || value === "l15" || value === "l30" ? value : null;
 }
 
 function settingsRow(settings: Settings): Record<string, unknown> {

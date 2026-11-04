@@ -1,4 +1,5 @@
-import { canonicalTeam } from "./teams";
+import { CURRENT_SEASON, POSITIONS, type Position } from "../engine";
+import { canonicalTeam, teamFromLabel } from "./teams";
 
 export type BrefPlayerRow = {
   playerId: string;
@@ -119,6 +120,13 @@ export function pageIsCurrentSeason(html: string): boolean {
   return html.includes("2026-27");
 }
 
+/** 2026-27, the en-dash form, or 2026-2027. TeamRankings and FantasyPros use the long form. */
+export function pageMentionsCurrentSeason(html: string): boolean {
+  const start = CURRENT_SEASON.slice(0, 4);
+  const end = CURRENT_SEASON.slice(5);
+  return html.includes(CURRENT_SEASON) || html.includes(`${start}–${end}`) || html.includes(`${start}-20${end}`);
+}
+
 export type SportsLineRow = {
   player: string;
   position: string;
@@ -170,28 +178,86 @@ export function parseSportsLine(html: string): SportsLineRow[] {
   return rows.filter((row) => row.player);
 }
 
-export type HashtagRow = { position: string; team: string; pointsAllowed: number; reboundsAllowed: number };
+export type TeamRankingsRebound = { team: string; season: number; last3: number };
 
-export function parseHashtag(html: string): HashtagRow[] {
-  const start = html.indexOf('id="ContentPlaceHolder1_GridView1"');
-  if (start < 0) return [];
-  const end = html.indexOf("</table>", start);
-  const table = html.slice(start, end);
-  const rows: HashtagRow[] = [];
-  for (const tr of table.match(/<tr[\s\S]*?<\/tr>/gi) ?? []) {
-    const cells = [...tr.matchAll(/<td[\s\S]*?<\/td>/gi)].map((match) => {
-      const labeled = [...match[0].matchAll(/<span id="[^"]*">([^<]*)<\/span>/g)]
-        .map((span) => span[1].trim())
-        .filter(Boolean);
-      if (labeled.length) return labeled[0];
-      return match[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().split(" ")[0] ?? "";
-    });
-    if (cells.length < 7) continue;
-    const team = canonicalTeam(cells[1] ?? "");
-    const pointsAllowed = Number(cells[2]);
-    const reboundsAllowed = Number(cells[6]);
-    if (!team || !Number.isFinite(pointsAllowed) || !Number.isFinite(reboundsAllowed)) continue;
-    rows.push({ position: (cells[0] ?? "").toUpperCase(), team, pointsAllowed, reboundsAllowed });
+/** Season and Last 3 are columns on the same table. Last 3 is not a query. */
+export function parseTeamRankingsOppRebounds(html: string): TeamRankingsRebound[] {
+  const table = html.match(/<table\b[^>]*class="[^"]*\btr-table\b[^"]*"[\s\S]*?<\/table>/i)?.[0];
+  if (!table) return [];
+  const headerRow = table.match(/<thead[\s\S]*?<\/thead>/i)?.[0] ?? "";
+  const headers = cellsOf(headerRow.match(/<tr[\s\S]*?<\/tr>/i)?.[0] ?? "").map((cell) => cell.toLowerCase());
+  const seasonYear = CURRENT_SEASON.slice(0, 4);
+  const seasonAt = headers.findIndex((header) => header === seasonYear);
+  const last3At = headers.findIndex((header) => /^last\s*3$/.test(header));
+  if (seasonAt < 0 || last3At < 0) return [];
+  const body = table.match(/<tbody[\s\S]*?<\/tbody>/i)?.[0] ?? table;
+  const rows: TeamRankingsRebound[] = [];
+  for (const tr of body.match(/<tr[\s\S]*?<\/tr>/gi) ?? []) {
+    const values = cellsOf(tr);
+    const team = teamFromLabel(values[1] ?? "");
+    const season = statNumber(values[seasonAt] ?? "");
+    const last3 = statNumber(values[last3At] ?? "");
+    if (!team || season == null || last3 == null) continue;
+    rows.push({ team, season, last3 });
   }
   return rows;
+}
+
+export type FanduelWindow = "l15" | "l30";
+export type FanduelDefenseRow = {
+  team: string;
+  position: Position;
+  points: number | null;
+  rebounds: number | null;
+};
+
+/**
+ * Last 15 and last 30 are rows in the same HTML, class GC-15 and GC-30.
+ * They are not selected with a query param. Points and rebounds are those columns.
+ */
+export function parseFanduelDefense(html: string): { l15: FanduelDefenseRow[]; l30: FanduelDefenseRow[] } {
+  const empty = { l15: [] as FanduelDefenseRow[], l30: [] as FanduelDefenseRow[] };
+  const tables = html.match(/<table\b[\s\S]*?<\/table>/gi) ?? [];
+  const table = tables.find((item) => /GC-15|GC-30/.test(item)) ?? null;
+  if (!table) return empty;
+  const headerRow = table.match(/<thead[\s\S]*?<\/thead>/i)?.[0] ?? "";
+  const headers = cellsOf(headerRow.match(/<tr[\s\S]*?<\/tr>/i)?.[0] ?? "").map((cell) => cell.toUpperCase());
+  const pointsAt = headers.indexOf("PTS");
+  const reboundsAt = headers.indexOf("REB");
+  if (pointsAt < 0 || reboundsAt < 0) return empty;
+  const l15: FanduelDefenseRow[] = [];
+  const l30: FanduelDefenseRow[] = [];
+  for (const tr of table.match(/<tr\b[\s\S]*?<\/tr>/gi) ?? []) {
+    const className = /class="([^"]*)"/i.exec(tr)?.[1] ?? "";
+    const tokens = new Set(className.split(/\s+/).filter(Boolean));
+    const window = tokens.has("GC-15") ? "l15" : tokens.has("GC-30") ? "l30" : null;
+    const position = POSITIONS.find((item) => tokens.has(item));
+    if (!window || !position) continue;
+    const logo = /nba-([a-z0-9]+)/i.exec(tr)?.[1] ?? "";
+    const values = cellsOf(tr);
+    const team = teamFromLabel(logo) ?? teamFromLabel(values[0] ?? "");
+    if (!team) continue;
+    const row: FanduelDefenseRow = {
+      team,
+      position,
+      points: statNumber(values[pointsAt] ?? ""),
+      rebounds: statNumber(values[reboundsAt] ?? ""),
+    };
+    if (window === "l15") l15.push(row);
+    else l30.push(row);
+  }
+  return { l15, l30 };
+}
+
+function cellsOf(row: string): string[] {
+  return [...row.matchAll(/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((match) =>
+    decode(match[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()),
+  );
+}
+
+function statNumber(text: string): number | null {
+  const cleaned = text.replace(/,/g, "").trim();
+  if (!cleaned || cleaned === "--" || cleaned === "—") return null;
+  const value = Number(cleaned);
+  return Number.isFinite(value) ? value : null;
 }
