@@ -111,6 +111,8 @@ export type PlayerRate = {
   recentGames: number | null;
   sourceTimestamp: string | null;
 };
+export type DvpWindow = "both" | "l15" | "l30";
+
 export type Dvp = {
   teamId: string;
   position: Position;
@@ -118,6 +120,9 @@ export type Dvp = {
   pointsDiff: number | null;
   reboundsDiff: number | null;
   sourceTimestamp: string | null;
+  /** Which FantasyPros windows produced the differential. Absent on older rows. */
+  pointsWindow?: DvpWindow | null;
+  reboundsWindow?: DvpWindow | null;
 };
 export type PaceRow = {
   teamId: string;
@@ -299,6 +304,116 @@ export function weightedDvp(l30Diff: number, l15Diff: number): number {
   return l30Diff * 0.3 + l15Diff * 0.7;
 }
 
+export function dvpWindowNote(window: DvpWindow | null | undefined): string | null {
+  if (window === "l15") return "Last 30 was missing. Last 15 is the defense vs position number.";
+  if (window === "l30") return "Last 15 was missing. Last 30 is the defense vs position number.";
+  return null;
+}
+
+export type DefenseWindowRow = {
+  teamId: string;
+  position: Position;
+  points: number | null;
+  rebounds: number | null;
+};
+
+export type DefenseDiff = {
+  teamId: string;
+  position: Position;
+  pointsDiff: number | null;
+  reboundsDiff: number | null;
+  pointsWindow: DvpWindow | null;
+  reboundsWindow: DvpWindow | null;
+};
+
+function windowKey(teamId: string, position: Position): string {
+  return `${teamId}|${position}`;
+}
+
+function meanOf(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+/**
+ * Each window is the team's cell minus that window's position average.
+ * Both windows blend last 30 at 30% and last 15 at 70%. One window is used whole.
+ */
+export function defenseVsPosition(l30Rows: DefenseWindowRow[], l15Rows: DefenseWindowRow[]): DefenseDiff[] {
+  const l30 = new Map(l30Rows.map((row) => [windowKey(row.teamId, row.position), row]));
+  const l15 = new Map(l15Rows.map((row) => [windowKey(row.teamId, row.position), row]));
+  const keys = new Set([...l30.keys(), ...l15.keys()]);
+  const byPosition = new Map<Position, string[]>();
+  for (const key of keys) {
+    const position = key.split("|")[1] as Position;
+    const list = byPosition.get(position) ?? [];
+    list.push(key);
+    byPosition.set(position, list);
+  }
+  const out: DefenseDiff[] = [];
+  for (const [position, group] of byPosition) {
+    const points30 = group.map((key) => l30.get(key)?.points).filter((value): value is number => value != null);
+    const points15 = group.map((key) => l15.get(key)?.points).filter((value): value is number => value != null);
+    const rebounds30 = group.map((key) => l30.get(key)?.rebounds).filter((value): value is number => value != null);
+    const rebounds15 = group.map((key) => l15.get(key)?.rebounds).filter((value): value is number => value != null);
+    const pointsMean30 = meanOf(points30);
+    const pointsMean15 = meanOf(points15);
+    const reboundsMean30 = meanOf(rebounds30);
+    const reboundsMean15 = meanOf(rebounds15);
+    for (const key of group) {
+      const teamId = key.slice(0, key.lastIndexOf("|"));
+      const rawPoints30 = l30.get(key)?.points ?? null;
+      const rawPoints15 = l15.get(key)?.points ?? null;
+      const rawRebounds30 = l30.get(key)?.rebounds ?? null;
+      const rawRebounds15 = l15.get(key)?.rebounds ?? null;
+      const points = blendWindowDiff(rawPoints30, pointsMean30, rawPoints15, pointsMean15);
+      const rebounds = blendWindowDiff(rawRebounds30, reboundsMean30, rawRebounds15, reboundsMean15);
+      if (points.value == null && rebounds.value == null) continue;
+      out.push({
+        teamId,
+        position,
+        pointsDiff: points.value,
+        reboundsDiff: rebounds.value,
+        pointsWindow: points.window,
+        reboundsWindow: rebounds.window,
+      });
+    }
+  }
+  return out;
+}
+
+function blendWindowDiff(
+  l30: number | null,
+  l30Mean: number | null,
+  l15: number | null,
+  l15Mean: number | null,
+): { value: number | null; window: DvpWindow | null } {
+  const d30 = l30 != null && l30Mean != null ? l30 - l30Mean : null;
+  const d15 = l15 != null && l15Mean != null ? l15 - l15Mean : null;
+  if (d30 != null && d15 != null) return { value: weightedDvp(d30, d15), window: "both" };
+  if (d15 != null) return { value: d15, window: "l15" };
+  if (d30 != null) return { value: d30, window: "l30" };
+  return { value: null, window: null };
+}
+
+export function opponentReboundDiffs(rows: { teamId: string; season: number; last3: number }[]): { teamId: string; reboundDiff: number }[] {
+  if (rows.length === 0) return [];
+  const blends = rows.map((row) => weightedOppReboundDiff(row.season, row.last3, 0));
+  const league = blends.reduce((sum, value) => sum + value, 0) / blends.length;
+  return rows.map((row, index) => ({ teamId: row.teamId, reboundDiff: blends[index] - league }));
+}
+
+/** Saved numbers stay. A missing key uses the current default. */
+export function mergeSettings(saved: Partial<Settings> | null | undefined): Settings {
+  const next = { ...DEFAULT_SETTINGS };
+  if (!saved) return next;
+  for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof Settings)[]) {
+    const value = saved[key];
+    if (typeof value === "number" && Number.isFinite(value)) next[key] = value;
+  }
+  return next;
+}
+
 export function weightedPace(l10: number, season: number): number {
   return l10 * 0.75 + season * 0.25;
 }
@@ -362,6 +477,8 @@ export type PointsInput = {
   recentPerGame: number | null;
   recentGames: number | null;
   dvpDiff: number | null;
+  /** Set when FantasyPros had only one of the last-30 and last-15 windows. */
+  dvpNote?: string | null;
   paceDiff: number | null;
   gamePace: number | null;
   gamePacePartial: boolean;
@@ -383,6 +500,8 @@ export type ReboundsInput = {
   recentPerGame: number | null;
   recentGames: number | null;
   dvpDiff: number | null;
+  /** Set when FantasyPros had only one of the last-30 and last-15 windows. */
+  dvpNote?: string | null;
   paceDiff: number | null;
   oppReboundDiff: number | null;
   strengths: Settings;
@@ -545,20 +664,7 @@ export function projectPoints(input: PointsInput): StatProjection {
   const s = input.strengths;
   const adjustments: Adjustment[] = [...preface];
 
-  if (input.dvpDiff == null) adjustments.push(skip("dvp", "Defense vs position", "opponent defense vs position is missing", s.dvpPointsStrength));
-  else {
-    const delta = input.dvpDiff / s.dvpPointsStrength;
-    adjustments.push({
-      key: "dvp",
-      label: "Defense vs position",
-      status: "applied",
-      reason: null,
-      input: input.dvpDiff,
-      strength: s.dvpPointsStrength,
-      delta,
-      detail: `${roundDetail(input.dvpDiff)} points vs position / ${s.dvpPointsStrength} = ${roundDetail(delta)}.`,
-    });
-  }
+  adjustments.push(dvpAdjustment("points", input.dvpDiff, input.dvpNote, s.dvpPointsStrength, flags));
 
   adjustments.push(paceAdjustment(input.paceDiff, s.pacePointsStrength));
 
@@ -597,6 +703,40 @@ export function projectPoints(input: PointsInput): StatProjection {
     projection,
     flags,
     minutes: input.projectedMinutes,
+  };
+}
+
+function dvpAdjustment(stat: "points" | "rebounds", diff: number | null, note: string | null | undefined, strength: number, flags: string[]): Adjustment {
+  const label = "Defense vs position";
+  if (diff == null) return skip("dvp", label, "opponent defense vs position is missing", strength);
+  const delta = diff / strength;
+  const noun = stat === "points" ? "points" : "rebounds";
+  if (note) flags.push(note);
+  return {
+    key: "dvp",
+    label,
+    status: "applied",
+    reason: null,
+    input: diff,
+    strength,
+    delta,
+    detail: `${roundDetail(diff)} ${noun} vs position / ${strength} = ${roundDetail(delta)}.${note ? ` ${note}` : ""}`,
+  };
+}
+
+function oppReboundsAdjustment(diff: number | null, strength: number): Adjustment {
+  const label = "Opponent rebounds allowed";
+  if (diff == null) return skip("opp_rebounds", label, "opponent rebounds are missing", strength);
+  const delta = diff / strength;
+  return {
+    key: "opp_rebounds",
+    label,
+    status: "applied",
+    reason: null,
+    input: diff,
+    strength,
+    delta,
+    detail: `${roundDetail(diff)} rebounds versus the league blend / ${strength} = ${roundDetail(delta)}.`,
   };
 }
 
@@ -661,20 +801,7 @@ export function projectRebounds(input: ReboundsInput): StatProjection {
   const s = input.strengths;
   const adjustments: Adjustment[] = [...preface];
 
-  if (input.dvpDiff == null) adjustments.push(skip("dvp", "Defense vs position", "opponent defense vs position is missing", s.dvpReboundsStrength));
-  else {
-    const delta = input.dvpDiff / s.dvpReboundsStrength;
-    adjustments.push({
-      key: "dvp",
-      label: "Defense vs position",
-      status: "applied",
-      reason: null,
-      input: input.dvpDiff,
-      strength: s.dvpReboundsStrength,
-      delta,
-      detail: `${roundDetail(input.dvpDiff)} rebounds vs position / ${s.dvpReboundsStrength} = ${roundDetail(delta)}.`,
-    });
-  }
+  adjustments.push(dvpAdjustment("rebounds", input.dvpDiff, input.dvpNote, s.dvpReboundsStrength, flags));
 
   adjustments.push(paceAdjustment(input.paceDiff, s.paceReboundsStrength));
 
@@ -702,7 +829,7 @@ export function projectRebounds(input: ReboundsInput): StatProjection {
   }
 
   adjustments.push(reboundsMinutesAdjustment(input, anchor, anchorLabel));
-  adjustments.push(skip("opp_rebounds", "Opponent rebounds allowed", "Opponent rebounds are not a live input", s.oppReboundsStrength));
+  adjustments.push(oppReboundsAdjustment(input.oppReboundDiff, s.oppReboundsStrength));
 
   const projection = baseline + adjustments.reduce((sum, adj) => sum + (adj.delta ?? 0), 0);
   return {
@@ -1600,6 +1727,7 @@ function evaluatePlayer(db: Database, player: Player, game: Game): Eval {
     recentPerGame: rate?.recentPointsPerGame ?? null,
     recentGames: rate?.recentGames ?? null,
     dvpDiff: dvp?.pointsDiff ?? null,
+    dvpNote: dvpWindowNote(dvp?.pointsWindow),
     paceDiff: oppPace?.paceDiff ?? null,
     gamePace: null,
     gamePacePartial: false,
@@ -1615,6 +1743,7 @@ function evaluatePlayer(db: Database, player: Player, game: Game): Eval {
     recentPerGame: rate?.recentReboundsPerGame ?? null,
     recentGames: rate?.recentGames ?? null,
     dvpDiff: dvp?.reboundsDiff ?? null,
+    dvpNote: dvpWindowNote(dvp?.reboundsWindow),
     paceDiff: oppPace?.paceDiff ?? null,
     oppReboundDiff: oppReb?.reboundDiff ?? null,
     strengths: db.settings,

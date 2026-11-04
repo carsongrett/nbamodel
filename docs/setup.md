@@ -8,7 +8,7 @@ npm test
 npm run dev
 ```
 
-Open the app. **Today** is the current date in America/Chicago and shows the live projection. **History** is earlier slates and how they graded. **Projections** loads ESPN, Basketball Reference, SportsLine, and Hashtag. **Lines** loads BettingPros points and rebounds.
+Open the app. **Today** is the current date in America/Chicago and shows the live projection. **History** is earlier slates and how they graded. **Projections** loads ESPN, Basketball Reference, SportsLine, FantasyPros, and TeamRankings. **Lines** loads BettingPros points and rebounds.
 
 Today's refresh drops sample rows and matches an exact normalized name on the same team. Sample player ids start with `player_` and sample game ids start with `game_`. A SportsLine name matches when, after accents and punctuation are removed, it equals one Basketball Reference player on that team. Two players with that same name are left off. A different suffix, such as Jr, stays a different name.
 
@@ -16,7 +16,7 @@ Put `BETTINGPROS_API_KEY` in `.env.local` and restart the server when you want c
 
 Then:
 
-1. On **Today**, press **Projections** once. That loads ESPN’s spread and total, then Basketball Reference, SportsLine, and Hashtag. It does not call BettingPros. If one of those sources fails, the click stops, names that source, and does not save today's slate.
+1. On **Today**, press **Projections** once. That loads ESPN’s spread and total, then Basketball Reference, SportsLine, FantasyPros, and TeamRankings. It does not call BettingPros. If one of those sources fails, the click stops, names that source, and does not save today's slate.
 2. Press **Lines** near tip-off. That loads BettingPros points and rebounds and replaces a typed number while the game is still pregame. After actuals are stored, the saved line stays. A player is stored in History when a line exists. An empty line is left out.
 3. On a later day, press **Projections** again. The download includes Basketball Reference daily leaders for the previous 15 dates. Box scores are stored for games already on the desk, and those saved projections and lines are not replaced.
 4. Open **History**. Grades use the saved line.
@@ -48,7 +48,7 @@ Research Slate calls the provider from the server. If the provider or key is mis
 
 Nothing is scheduled. Projections, Lines, imports, and Research Slate are manual. The next **Projections** is what writes the earlier box scores.
 
-**Projections** reads ESPN’s spread and total, then Basketball Reference (season usage, season rebounds per minute, the prior 15 daily leader pages, team pace, and that date’s leaders), the SportsLine simulation table, and Hashtag defense vs position. It does not call BettingPros. If ESPN, Basketball Reference, SportsLine, or Hashtag fails, the click stops and nothing is written. A finished click keeps SportsLine rows that match one Basketball Reference player by exact normalized name and team, and it removes sample rows. Leader pages for earlier dates grade a game only when that game is already stored, and they do not replace the saved projection or line. Players who are not already on the desk are skipped. The selected date still stores its own leaders and can add that day’s games. The spread and total come from the ESPN page, one request for the day. **Lines** reads that day’s BettingPros events and consensus lines for points (market 156) and rebounds (157), book 0. Points plus rebounds on the board is projected points plus projected rebounds. That line is not requested. Paging starts only after the first offers page parses. A line from Lines or from the box is stored in History. A stat with no line is left out. Lines replaces a typed number while the game is still pregame. After actuals are stored, the saved line stays. A failed Lines click leaves the board and the typed numbers in place.
+**Projections** reads ESPN’s spread and total, then Basketball Reference (season usage, season rebounds per minute, the prior 15 daily leader pages, team pace, and that date’s leaders), the SportsLine simulation table, FantasyPros FanDuel defense vs position, and TeamRankings opponent rebounds. It does not call BettingPros. If ESPN, Basketball Reference, SportsLine, FantasyPros, or TeamRankings fails, the click stops and nothing is written. A finished click keeps SportsLine rows that match one Basketball Reference player by exact normalized name and team, and it removes sample rows. Leader pages for earlier dates grade a game only when that game is already stored, and they do not replace the saved projection or line. Players who are not already on the desk are skipped. The selected date still stores its own leaders and can add that day’s games. The spread and total come from the ESPN page, one request for the day. **Lines** reads that day’s BettingPros events and consensus lines for points (market 156) and rebounds (157), book 0. Points plus rebounds on the board is projected points plus projected rebounds. That line is not requested. Paging starts only after the first offers page parses. A line from Lines or from the box is stored in History. A stat with no line is left out. Lines replaces a typed number while the game is still pregame. After actuals are stored, the saved line stays. A failed Lines click leaves the board and the typed numbers in place.
 
 ## Database
 

@@ -1,17 +1,18 @@
-import { applyModelRun, type Database, type ModelMessage } from "../engine";
+import { applyModelRun, CURRENT_SEASON, type Database, type ModelMessage } from "../engine";
 import { applyPublicPages, type FetchedPage, type PublicFetch } from "./apply";
 import { applyBettingProsProbe } from "./apply-bettingpros";
 import { fetchBettingProsDay, type ProbeResult } from "./bettingpros";
 import { fetchDimersSlate } from "./dimers";
 import { applyEspnOdds, fetchEspnOdds, type EspnGameOdds } from "./espn";
-import { pageIsCurrentSeason } from "./parsers";
+import { pageIsCurrentSeason, pageMentionsCurrentSeason } from "./parsers";
 import { dailyLeadersUrl, shiftDate } from "./teams";
 
 const ADVANCED_URL = "https://www.basketball-reference.com/leagues/NBA_2027_advanced.html";
 const PER_GAME_URL = "https://www.basketball-reference.com/leagues/NBA_2027_per_game.html";
 const LEAGUE_URL = "https://www.basketball-reference.com/leagues/NBA_2027.html";
 const SPORTSLINE_URL = "https://www.sportsline.com/nba/expert-projections/simulation/";
-const HASHTAG_URL = "https://hashtagbasketball.com/nba-defense-vs-position";
+export const FANTASYPROS_DVP_URL = "https://www.fantasypros.com/daily-fantasy/nba/fanduel-defense-vs-position.php";
+export const TEAMRANKINGS_OPP_REBOUNDS_URL = "https://www.teamrankings.com/nba/stat/opponent-total-rebounds-per-game";
 
 export type PageResponse = { ok: boolean; status: number; text: () => Promise<string> };
 export type PageFetch = (url: string, init: { headers: Record<string, string> }) => Promise<PageResponse>;
@@ -37,6 +38,11 @@ async function pull(fetchPage: PageFetch, source: string, url: string, headers: 
 function seasonPage(source: string, html: string): DailyFailure | null {
   if (pageIsCurrentSeason(html)) return null;
   return failed(source, "The page is not the 2026–27 season.");
+}
+
+function publishedSeason(source: string, html: string): DailyFailure | null {
+  if (pageMentionsCurrentSeason(html)) return null;
+  return failed(source, `The page is not the ${CURRENT_SEASON} season.`);
 }
 
 function page(url: string, html: string): FetchedPage {
@@ -81,10 +87,15 @@ export async function collectProjectionSources(date: string, savedAt: string, fe
   const sportsline = await pull(fetchPage, "SportsLine", SPORTSLINE_URL, htmlHeaders);
   if (!sportsline.ok) return sportsline;
 
-  const hashtag = await pull(fetchPage, "Hashtag defense vs position", HASHTAG_URL, htmlHeaders);
-  if (!hashtag.ok) return hashtag;
-  const hashtagSeason = seasonPage("Hashtag defense vs position", hashtag.html);
-  if (hashtagSeason) return hashtagSeason;
+  const fantasypros = await pull(fetchPage, "FantasyPros defense vs position", FANTASYPROS_DVP_URL, htmlHeaders);
+  if (!fantasypros.ok) return fantasypros;
+  const fantasyprosSeason = publishedSeason("FantasyPros defense vs position", fantasypros.html);
+  if (fantasyprosSeason) return fantasyprosSeason;
+
+  const teamrankings = await pull(fetchPage, "TeamRankings opponent rebounds", TEAMRANKINGS_OPP_REBOUNDS_URL, htmlHeaders);
+  if (!teamrankings.ok) return teamrankings;
+  const teamrankingsSeason = publishedSeason("TeamRankings opponent rebounds", teamrankings.html);
+  if (teamrankingsSeason) return teamrankingsSeason;
 
   const dimers = await fetchDimersSlate(date, sportsline.html, espn.games, fetchPage);
 
@@ -95,7 +106,8 @@ export async function collectProjectionSources(date: string, savedAt: string, fe
     last15,
     actuals: page(dailyLeadersUrl(date), boxScores.html),
     sportsline: page(SPORTSLINE_URL, sportsline.html),
-    hashtag: page(HASHTAG_URL, hashtag.html),
+    fantasypros: page(FANTASYPROS_DVP_URL, fantasypros.html),
+    teamrankings: page(TEAMRANKINGS_OPP_REBOUNDS_URL, teamrankings.html),
     dimers,
     retrievedAt: savedAt,
   };

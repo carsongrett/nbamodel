@@ -1,6 +1,8 @@
 import {
   CURRENT_SEASON,
   POSITIONS,
+  defenseVsPosition,
+  opponentReboundDiffs,
   upsertByKey,
   type Actual,
   type Database,
@@ -8,6 +10,7 @@ import {
   type Game,
   type IdMap,
   type ModelMessage,
+  type OppRebound,
   type OutsideProjection,
   type Player,
   type PlayerRate,
@@ -16,12 +19,11 @@ import {
 } from "../engine";
 import { normalizePersonName } from "./names";
 import type { DimersFetch, DimersPlayer } from "./dimers";
-import { pageIsCurrentSeason, parseBrefPlayers, parseHashtag, parseSportsLine, parseTeamPace, type BrefPlayerRow } from "./parsers";
+import { pageIsCurrentSeason, pageMentionsCurrentSeason, parseBrefPlayers, parseFanduelDefense, parseSportsLine, parseTeamPace, parseTeamRankingsOppRebounds, type BrefPlayerRow } from "./parsers";
 import { matchupGameId } from "./teams";
 
 export const BREF = "basketball-reference";
 export const SPORTSLINE = "sportsline";
-export const HASHTAG = "hashtag";
 export const DIMERS = "dimers";
 
 export type FetchedPage = { url: string; ok: true; html: string } | { url: string; ok: false; error: string };
@@ -33,7 +35,8 @@ export type PublicFetch = {
   last15: { date: string; page: FetchedPage }[];
   actuals: FetchedPage;
   sportsline: FetchedPage;
-  hashtag: FetchedPage;
+  fantasypros: FetchedPage;
+  teamrankings: FetchedPage;
   /** Absent on older fetches. A failed fetch keeps SportsLine as the baseline. */
   dimers?: DimersFetch;
   retrievedAt: string;
@@ -153,6 +156,7 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
   let projections = db.projections.slice();
   let dvp = db.dvp.slice();
   let pace = db.pace.slice();
+  let oppRebounds = db.oppRebounds.slice();
   let actuals = db.actuals.slice();
 
   const ensureTeam = (teamId: string) => {
@@ -500,41 +504,65 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
     });
   }
 
-  if (!fetched.hashtag.ok) {
-    messages.push({ level: "error", playerId: null, message: `Hashtag Basketball failed: ${fetched.hashtag.error}` });
-  } else if (!pageIsCurrentSeason(fetched.hashtag.html)) {
-    messages.push({ level: "error", playerId: null, message: "Hashtag Basketball did not identify the 2026–27 season and was not imported." });
+  if (!fetched.fantasypros.ok) {
+    messages.push({ level: "error", playerId: null, message: `FantasyPros defense vs position failed: ${fetched.fantasypros.error}` });
+  } else if (!pageMentionsCurrentSeason(fetched.fantasypros.html)) {
+    messages.push({ level: "error", playerId: null, message: "FantasyPros defense vs position did not identify the 2026–27 season and was not imported." });
   } else {
-    const parsed = parseHashtag(fetched.hashtag.html);
-    const byPosition = new Map<string, { points: number[]; rebounds: number[] }>();
-    for (const row of parsed) {
-      const bucket = byPosition.get(row.position) ?? { points: [], rebounds: [] };
-      bucket.points.push(row.pointsAllowed);
-      bucket.rebounds.push(row.reboundsAllowed);
-      byPosition.set(row.position, bucket);
-    }
-    const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
-    const incoming: Dvp[] = [];
-    for (const row of parsed) {
-      if (!isPosition(row.position)) continue;
-      const bucket = byPosition.get(row.position);
-      if (!bucket || bucket.points.length === 0) continue;
-      ensureTeam(row.team);
-      incoming.push({
-        teamId: row.team,
-        position: row.position,
-        season: CURRENT_SEASON,
-        pointsDiff: row.pointsAllowed - mean(bucket.points),
-        reboundsDiff: row.reboundsAllowed - mean(bucket.rebounds),
-        sourceTimestamp: fetched.retrievedAt,
+    const parsed = parseFanduelDefense(fetched.fantasypros.html);
+    const diffs = defenseVsPosition(
+      parsed.l30.map((row) => ({ teamId: row.team, position: row.position, points: row.points, rebounds: row.rebounds })),
+      parsed.l15.map((row) => ({ teamId: row.team, position: row.position, points: row.points, rebounds: row.rebounds })),
+    );
+    if (diffs.length === 0) {
+      messages.push({ level: "error", playerId: null, message: "FantasyPros defense vs position had no last-15 or last-30 rows." });
+    } else {
+      const incoming: Dvp[] = diffs.map((row) => {
+        ensureTeam(row.teamId);
+        return {
+          teamId: row.teamId,
+          position: row.position,
+          season: CURRENT_SEASON,
+          pointsDiff: row.pointsDiff,
+          reboundsDiff: row.reboundsDiff,
+          pointsWindow: row.pointsWindow,
+          reboundsWindow: row.reboundsWindow,
+          sourceTimestamp: fetched.retrievedAt,
+        };
       });
+      dvp = upsertByKey(dvp, incoming, (row) => `${row.teamId}|${row.position}`).rows;
+      const partial = incoming.filter((row) => row.pointsWindow !== "both" || row.reboundsWindow !== "both").length;
+      const note = partial ? ` ${partial} used one window because the other was missing.` : "";
+      messages.push({ level: "info", playerId: null, message: `FantasyPros defense vs position rows stored: ${incoming.length}.${note}` });
     }
-    dvp = upsertByKey(dvp, incoming, (row) => `${row.teamId}|${row.position}`).rows;
-    messages.push({ level: "info", playerId: null, message: `Hashtag defense vs position rows stored: ${incoming.length}.` });
+  }
+
+  if (!fetched.teamrankings.ok) {
+    messages.push({ level: "error", playerId: null, message: `TeamRankings opponent rebounds failed: ${fetched.teamrankings.error}` });
+  } else if (!pageMentionsCurrentSeason(fetched.teamrankings.html)) {
+    messages.push({ level: "error", playerId: null, message: "TeamRankings opponent rebounds did not identify the 2026–27 season and was not imported." });
+  } else {
+    const parsed = parseTeamRankingsOppRebounds(fetched.teamrankings.html);
+    const diffs = opponentReboundDiffs(parsed.map((row) => ({ teamId: row.team, season: row.season, last3: row.last3 })));
+    if (diffs.length === 0) {
+      messages.push({ level: "error", playerId: null, message: "TeamRankings opponent rebounds table had no season and Last 3 rows." });
+    } else {
+      const incoming: OppRebound[] = diffs.map((row) => {
+        ensureTeam(row.teamId);
+        return {
+          teamId: row.teamId,
+          season: CURRENT_SEASON,
+          reboundDiff: row.reboundDiff,
+          sourceTimestamp: fetched.retrievedAt,
+        };
+      });
+      oppRebounds = upsertByKey(oppRebounds, incoming, (row) => row.teamId).rows;
+      messages.push({ level: "info", playerId: null, message: `TeamRankings opponent rebounds stored: ${incoming.length}.` });
+    }
   }
 
   return {
-    db: { ...db, teams, players, games, idMap, rates, projections, dvp, pace, actuals },
+    db: { ...db, teams, players, games, idMap, rates, projections, dvp, pace, oppRebounds, actuals },
     messages,
   };
 }

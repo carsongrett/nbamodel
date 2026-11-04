@@ -5,7 +5,8 @@ const ADVANCED_URL = "https://www.basketball-reference.com/leagues/NBA_2027_adva
 const PER_GAME_URL = "https://www.basketball-reference.com/leagues/NBA_2027_per_game.html";
 const LEAGUE_URL = "https://www.basketball-reference.com/leagues/NBA_2027.html";
 const SPORTSLINE_URL = "https://www.sportsline.com/nba/expert-projections/simulation/";
-const HASHTAG_URL = "https://hashtagbasketball.com/nba-defense-vs-position";
+const FANTASYPROS_DVP_URL = "https://www.fantasypros.com/daily-fantasy/nba/fanduel-defense-vs-position.php";
+const TEAMRANKINGS_OPP_REBOUNDS_URL = "https://www.teamrankings.com/nba/stat/opponent-total-rebounds-per-game";
 
 async function getPage(url: string): Promise<FetchedPage> {
   try {
@@ -29,13 +30,14 @@ export async function fetchPublicPages(slateDate: string, retrievedAt = new Date
     const date = shiftDate(slateDate, -ago);
     last15.push({ date, page: await getPage(dailyLeadersUrl(date)) });
   }
-  const [advanced, perGame, pace, actuals, sportsline, hashtag] = await Promise.all([
+  const [advanced, perGame, pace, actuals, sportsline, fantasypros, teamrankings] = await Promise.all([
     getPage(ADVANCED_URL),
     getPage(PER_GAME_URL),
     getPage(LEAGUE_URL),
     getPage(dailyLeadersUrl(slateDate)),
     getPage(SPORTSLINE_URL),
-    getPage(HASHTAG_URL),
+    getPage(FANTASYPROS_DVP_URL),
+    getPage(TEAMRANKINGS_OPP_REBOUNDS_URL),
   ]);
-  return { advanced, perGame, pace, last15, actuals, sportsline, hashtag, retrievedAt };
+  return { advanced, perGame, pace, last15, actuals, sportsline, fantasypros, teamrankings, retrievedAt };
 }
