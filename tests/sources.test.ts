@@ -454,6 +454,83 @@ test("bettingpros day fetch pages after the first offers page parses", async () 
   assert.equal(failed("down").ok, false);
 });
 
+test("bettingpros waits 500ms between offer pulls", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const previous = process.env.BETTINGPROS_API_KEY;
+  process.env.BETTINGPROS_API_KEY = "test-key";
+  const eventsBody = JSON.stringify({
+    events: [
+      { id: 10, home: { abbreviation: "LAL" }, visitor: { abbreviation: "TOR" } },
+      { id: 11, home: { abbreviation: "BOS" }, visitor: { abbreviation: "NYK" } },
+    ],
+  });
+
+  async function finish<T>(pending: Promise<T>): Promise<T> {
+    let done = false;
+    const result = pending.then((value) => {
+      done = true;
+      return value;
+    });
+    for (let i = 0; i < 20 && !done; i += 1) {
+      for (let step = 0; step < 30; step += 1) await Promise.resolve();
+      t.mock.timers.runAll();
+    }
+    if (!done) throw new Error("BettingPros fetch did not finish");
+    return result;
+  }
+
+  try {
+    const urls: string[] = [];
+    let eventsAt = -1;
+    const offerAt: number[] = [];
+    const day = await finish(fetchBettingProsDay("2026-11-02", async (url) => {
+      urls.push(url);
+      if (url.includes("/events")) {
+        eventsAt = Date.now();
+        return { ok: true, status: 200, text: async () => eventsBody };
+      }
+      offerAt.push(Date.now());
+      const marketId = Number(new URL(url).searchParams.get("market_id"));
+      const pageNumber = Number(new URL(url).searchParams.get("page") ?? "1");
+      return { ok: true, status: 200, text: async () => offerBody(marketId, pageNumber, 1, 22.5) };
+    }));
+    assert.equal(urls.filter((url) => url.includes("/events")).length, 1);
+    assert.equal(offerAt.length, 4);
+    assert.equal(eventsAt, 0);
+    assert.deepEqual(offerAt, [0, 500, 1000, 1500]);
+    assert.equal(day.state, "parsed");
+
+    const burst: string[] = [];
+    let burstEventsAt = -1;
+    const burstAt: number[] = [];
+    const stopped = await finish(fetchBettingProsDay("2026-11-02", async (url) => {
+      burst.push(url);
+      if (url.includes("/events")) {
+        burstEventsAt = Date.now();
+        return { ok: true, status: 200, text: async () => JSON.stringify({ events: [{ id: 10, home: "LAL", visitor: "TOR" }] }) };
+      }
+      burstAt.push(Date.now());
+      if (burst.filter((item) => item.includes("/offers")).length >= 2) {
+        return { ok: false, status: 429, text: async () => "" };
+      }
+      const marketId = Number(new URL(url).searchParams.get("market_id"));
+      return { ok: true, status: 200, text: async () => offerBody(marketId, 1, 3, 22.5) };
+    }));
+    assert.equal(burst.filter((url) => url.includes("/events")).length, 1);
+    assert.equal(burst.filter((url) => url.includes("/offers")).length, 2);
+    assert.equal(burst.some((url) => url.includes("page=2")), true);
+    assert.equal(burst.some((url) => url.includes("page=3")), false);
+    assert.equal(burstAt[0], burstEventsAt);
+    assert.equal(burstAt[1] - burstAt[0], 500);
+    assert.equal(stopped.state, "error");
+    assert.match(stopped.message, /429/);
+  } finally {
+    t.mock.timers.reset();
+    if (previous == null) delete process.env.BETTINGPROS_API_KEY;
+    else process.env.BETTINGPROS_API_KEY = previous;
+  }
+});
+
 function espnCard(tip: string, away: string, home: string, awaySpread: string, homeSpread: string, total: string): string {
   return `<div data-testid="betSixPackTable-item-0">
     <a data-game-link="true">${tip}</a>

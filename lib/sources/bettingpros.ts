@@ -225,6 +225,13 @@ export function parseGameMarket(body: string, marketId: number, home: string | n
 }
 
 const MAX_BETTINGPROS_CALLS = 40;
+const OFFER_GAP_MS = 500;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 function offersUrl(eventId: string, marketId: number, page?: number): string {
   const base = `${BETTINGPROS_BASE}/offers?sport=NBA&event_id=${encodeURIComponent(eventId)}&market_id=${marketId}&book_id=${CONSENSUS_BOOK_ID}`;
@@ -258,6 +265,13 @@ export async function fetchBettingProsDay(date: string, fetchImpl?: FetchLike): 
   const headers = { "x-api-key": key, accept: "application/json" };
   const eventsUrl = `${BETTINGPROS_BASE}/events?sport=NBA&date=${encodeURIComponent(date)}`;
   const calls = [eventsUrl];
+  let offersRequested = 0;
+  const requestOffer = async (url: string) => {
+    if (offersRequested > 0) await wait(OFFER_GAP_MS);
+    offersRequested += 1;
+    calls.push(url);
+    return fetchPage(url, { headers });
+  };
   let eventsResponse: { ok: boolean; status: number; text: () => Promise<string> };
   try {
     eventsResponse = await fetchPage(eventsUrl, { headers });
@@ -297,10 +311,9 @@ export async function fetchBettingProsDay(date: string, fetchImpl?: FetchLike): 
     };
   }
   const proofUrl = offersUrl(first.id, POINTS_MARKET_ID);
-  calls.push(proofUrl);
   let proofResponse: { ok: boolean; status: number; text: () => Promise<string> };
   try {
-    proofResponse = await fetchPage(proofUrl, { headers });
+    proofResponse = await requestOffer(proofUrl);
   } catch (error) {
     return {
       state: "error",
@@ -341,9 +354,8 @@ export async function fetchBettingProsDay(date: string, fetchImpl?: FetchLike): 
 
   const pull = async (eventId: string, marketId: number, page: number) => {
     const url = offersUrl(eventId, marketId, page);
-    calls.push(url);
     try {
-      const response = await fetchPage(url, { headers });
+      const response = await requestOffer(url);
       const body = await response.text();
       return { ok: response.ok, status: response.status, body };
     } catch (error) {
