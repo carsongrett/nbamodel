@@ -412,19 +412,124 @@ function sampleGate(games: number | null, minimum: number, label: string): strin
   return null;
 }
 
-function sourcesForBaseline(sources: SourceValue[], flags: string[]): SourceValue[] {
+export const SPORTSLINE_BASELINE_WEIGHT = 0.65;
+export const DIMERS_BASELINE_WEIGHT = 0.35;
+
+const SPORTSLINE_SOURCE = "sportsline";
+const DIMERS_SOURCE = "dimers";
+
+function finiteSource(sources: SourceValue[], name: string): number | null {
+  const value = sources.find((source) => source.source === name)?.value;
+  return value != null && Number.isFinite(value) ? value : null;
+}
+
+function sportslineStep(value: number): Adjustment {
+  return {
+    key: "sportsline",
+    label: "SL projection",
+    status: "applied",
+    reason: null,
+    input: value,
+    strength: null,
+    delta: null,
+    detail: `SportsLine ${roundDetail(value)}.`,
+  };
+}
+
+function outsideBaseline(sources: SourceValue[], stat: "points" | "rebounds", flags: string[]): {
+  baseline: number | null;
+  sourcesUsed: string[];
+  preface: Adjustment[];
+} {
   if (sources.some((source) => source.source === "numberfire" && source.value != null)) {
     flags.push("NumberFire projections are not used.");
   }
-  return sources.filter((source) => source.source !== "numberfire" && source.value != null && Number.isFinite(source.value));
+  const sportsline = finiteSource(sources, SPORTSLINE_SOURCE);
+  const dimers = finiteSource(sources, DIMERS_SOURCE);
+  const dimersKnown = sources.some((source) => source.source === DIMERS_SOURCE);
+  const others = sources.filter((source) =>
+    source.source !== "numberfire"
+    && source.source !== SPORTSLINE_SOURCE
+    && source.source !== DIMERS_SOURCE
+    && source.value != null
+    && Number.isFinite(source.value));
+  const title = stat === "points" ? "Points" : "Rebounds";
+
+  if (sportsline != null && dimers != null) {
+    const baseline = sportsline * SPORTSLINE_BASELINE_WEIGHT + dimers * DIMERS_BASELINE_WEIGHT;
+    return {
+      baseline,
+      sourcesUsed: [SPORTSLINE_SOURCE, DIMERS_SOURCE],
+      preface: [
+        sportslineStep(sportsline),
+        {
+          key: "dimers",
+          label: "Dimers",
+          status: "applied",
+          reason: null,
+          input: dimers,
+          strength: DIMERS_BASELINE_WEIGHT,
+          delta: null,
+          detail: `Dimers ${roundDetail(dimers)}. Weight 65/35: SportsLine × ${SPORTSLINE_BASELINE_WEIGHT} + Dimers × ${DIMERS_BASELINE_WEIGHT} = ${roundDetail(baseline)}.`,
+        },
+      ],
+    };
+  }
+
+  if (dimersKnown && sportsline != null && dimers == null) {
+    const note = `Dimers ${stat} are missing. SportsLine is the full ${stat} baseline.`;
+    flags.push(note);
+    return {
+      baseline: sportsline,
+      sourcesUsed: [SPORTSLINE_SOURCE],
+      preface: [
+        sportslineStep(sportsline),
+        {
+          key: "dimers",
+          label: "Dimers",
+          status: "skipped",
+          reason: `Dimers ${stat} are missing`,
+          input: null,
+          strength: null,
+          delta: null,
+          detail: note,
+        },
+      ],
+    };
+  }
+
+  if (dimers != null && sportsline == null) {
+    const note = `SportsLine ${stat} are missing. Dimers is the full ${stat} baseline.`;
+    flags.push(note);
+    return {
+      baseline: dimers,
+      sourcesUsed: [DIMERS_SOURCE],
+      preface: [{
+        key: "dimers",
+        label: "Dimers",
+        status: "applied",
+        reason: null,
+        input: dimers,
+        strength: null,
+        delta: null,
+        detail: note,
+      }],
+    };
+  }
+
+  const used = [
+    ...(sportsline != null ? [{ source: SPORTSLINE_SOURCE, value: sportsline }] : []),
+    ...others.map((source) => ({ source: source.source, value: source.value as number })),
+  ];
+  const baseline = average(used.map((source) => source.value));
+  const sourcesUsed = used.map((source) => source.source);
+  if (sourcesUsed.length === 1) flags.push(`${title} baseline uses one outside source.`);
+  return { baseline, sourcesUsed, preface: [] };
 }
 
 export function projectPoints(input: PointsInput): StatProjection {
   const flags: string[] = [];
-  const used = sourcesForBaseline(input.sources, flags);
-  const baseline = average(used.map((s) => s.value as number));
-  const sourcesUsed = used.map((s) => s.source);
-  if (sourcesUsed.length === 1) flags.push("Points baseline uses one outside source.");
+  const { baseline, sourcesUsed, preface } = outsideBaseline(input.sources, "points", flags);
   if (baseline == null) {
     return {
       status: "blocked",
@@ -438,7 +543,7 @@ export function projectPoints(input: PointsInput): StatProjection {
     };
   }
   const s = input.strengths;
-  const adjustments: Adjustment[] = [];
+  const adjustments: Adjustment[] = [...preface];
 
   if (input.dvpDiff == null) adjustments.push(skip("dvp", "Defense vs position", "opponent defense vs position is missing", s.dvpPointsStrength));
   else {
@@ -540,10 +645,7 @@ function pointsMinutesAdjustment(input: PointsInput): Adjustment {
 
 export function projectRebounds(input: ReboundsInput): StatProjection {
   const flags: string[] = [];
-  const used = sourcesForBaseline(input.sources, flags);
-  const baseline = average(used.map((s) => s.value as number));
-  const sourcesUsed = used.map((s) => s.source);
-  if (sourcesUsed.length === 1) flags.push("Rebounds baseline uses one outside source.");
+  const { baseline, sourcesUsed, preface } = outsideBaseline(input.sources, "rebounds", flags);
   if (baseline == null) {
     return {
       status: "blocked",
@@ -557,7 +659,7 @@ export function projectRebounds(input: ReboundsInput): StatProjection {
     };
   }
   const s = input.strengths;
-  const adjustments: Adjustment[] = [];
+  const adjustments: Adjustment[] = [...preface];
 
   if (input.dvpDiff == null) adjustments.push(skip("dvp", "Defense vs position", "opponent defense vs position is missing", s.dvpReboundsStrength));
   else {
@@ -576,7 +678,7 @@ export function projectRebounds(input: ReboundsInput): StatProjection {
 
   adjustments.push(paceAdjustment(input.paceDiff, s.paceReboundsStrength));
 
-  const sportsline = used.find((source) => source.source === "sportsline")?.value ?? null;
+  const sportsline = finiteSource(input.sources, SPORTSLINE_SOURCE);
   const anchor = sportsline ?? baseline;
   const anchorLabel = sportsline != null ? "SportsLine rebounds" : "outside rebounds";
   const recentReason = input.recentPerGame == null

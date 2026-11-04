@@ -8,6 +8,7 @@ import { applyPublicPages, stripSample, type FetchedPage, type PublicFetch } fro
 import { applyBettingProsProbe } from "../lib/sources/apply-bettingpros.ts";
 import { fetchBettingProsDay, parseGameMarket, type ProbeResult } from "../lib/sources/bettingpros.ts";
 import { collectLines, collectProjectionSources, commitLines, commitProjections } from "../lib/sources/daily-run.ts";
+import { fetchDimersSlate, probeRoundNumbers } from "../lib/sources/dimers.ts";
 import { applyEspnOdds, parseEspnOdds } from "../lib/sources/espn.ts";
 import { parseEnvText, readProjectEnv } from "../lib/sources/env-file.ts";
 import { parseSportsLine } from "../lib/sources/parsers.ts";
@@ -636,4 +637,122 @@ test("the first failed source stops the click and does not save today's slate", 
     if (previous == null) delete process.env.BETTINGPROS_API_KEY;
     else process.env.BETTINGPROS_API_KEY = previous;
   }
+});
+
+test("a missing Dimers round does not stop the search for the slate", async () => {
+  const plan = probeRoundNumbers([
+    { year: 2026, round: 14, date: "2026-11-02" },
+    { year: 2026, round: 16, date: "2026-11-04" },
+    { year: 2026, round: 18, date: "2026-11-06" },
+  ], "2026-11-04", 2026);
+  assert.deepEqual(plan.window, [15, 16, 17]);
+  const calls: string[] = [];
+  const sportslineHtml = `<table><thead><tr>
+    <th id="PLAYER">PLAYER</th><th id="TEAM">TEAM</th><th id="GAME">GAME</th>
+    <th id="PTS">PTS</th><th id="MIN">MIN</th><th id="TRB">TRB</th>
+  </tr></thead><tbody><tr>
+    <td>Luka Doncic</td><td>LAL</td><td>TOR@LAL</td><td>32.3</td><td>36</td><td>8</td>
+  </tr></tbody></table>`;
+  const box = JSON.stringify([{
+    MatchData: {
+      Date: "2026-11-05T02:30:00Z",
+      AwayTeam: { Abv: "TOR" },
+      HomeTeam: { Abv: "LAL" },
+    },
+    projBoxScore: {
+      away: [],
+      home: [{ first_name: "Luka", last_name: "Doncic", points: 20, rebounds: 6 }],
+    },
+  }]);
+  const loaded = await fetchDimersSlate("2026-11-04", sportslineHtml, [], async (url) => {
+    calls.push(url);
+    if (url.includes("/round/options")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify([
+          { Year: 2026, Round_Number: 14, Round_Date: "2026-11-02" },
+          { Year: 2026, Round_Number: 16, Round_Date: "2026-11-04" },
+        ]),
+      };
+    }
+    if (url.includes("Round=15")) return { ok: false, status: 404, text: async () => "" };
+    if (url.includes("Round=16")) return { ok: true, status: 200, text: async () => box };
+    return { ok: false, status: 404, text: async () => "" };
+  });
+  assert.equal(loaded.ok, true);
+  if (loaded.ok) {
+    assert.equal(loaded.round, 16);
+    assert.equal(loaded.players[0]?.points, 20);
+    assert.equal(loaded.players[0]?.rebounds, 6);
+    assert.equal(loaded.players[0]?.name, "Luka Doncic");
+  }
+  const round15 = calls.findIndex((url) => url.includes("Round=15"));
+  const round16 = calls.findIndex((url) => url.includes("Round=16"));
+  assert.ok(round15 >= 0 && round16 > round15);
+
+  const matched = applyPublicPages(emptyDatabase(), "2026-11-04", bundle({
+    actuals: page("<table></table>"),
+    sportsline: page(sportslineHtml),
+    dimers: loaded.ok ? loaded : { ok: false, error: "missing" },
+  }));
+  const slate = buildSlate(matched.db, "2026-11-04");
+  const row = slate.rows.find((item) => item.playerId === "doncilu01");
+  assert.equal(row?.stats.points.baseline, 32.3 * 0.65 + 20 * 0.35);
+  assert.equal(row?.stats.points.adjustments.find((item) => item.key === "sportsline")?.input, 32.3);
+  assert.equal(row?.stats.rebounds.adjustments.find((item) => item.key === "dimers")?.input, 6);
+  assert.match(row?.stats.rebounds.adjustments.find((item) => item.key === "dimers")?.detail ?? "", /65\/35/);
+
+  const missed = applyPublicPages(emptyDatabase(), "2026-11-02", bundle({
+    actuals: page("<table></table>"),
+    dimers: { ok: true, round: 16, season: 2026, players: [] },
+  }));
+  const missedLuka = buildSlate(missed.db, "2026-11-02").rows.find((item) => item.playerId === "doncilu01");
+  assert.equal(missedLuka?.stats.points.baseline, 32.3);
+  assert.match(missedLuka?.stats.points.flags.join(" ") ?? "", /Dimers points are missing/);
+  assert.match(missedLuka?.stats.rebounds.flags.join(" ") ?? "", /Dimers rebounds are missing/);
+});
+
+test("a failed Dimers fetch keeps the SportsLine baseline and notes the miss", async () => {
+  const pages = bundle();
+  const urls: string[] = [];
+  const collected = await collectProjectionSources("2026-11-02", retrievedAt, async (url) => {
+    urls.push(url);
+    if (url.includes("round/options") || url.includes("round/boxscores")) return { ok: false, status: 503, text: async () => "" };
+    if (url.includes("espn.com")) return { ok: true, status: 200, text: async () => espnHtml };
+    if (url.includes("NBA_2027_advanced")) return { ok: true, status: 200, text: async () => pages.advanced.ok ? pages.advanced.html : "" };
+    if (url.includes("per_game")) return { ok: true, status: 200, text: async () => pages.perGame.ok ? pages.perGame.html : "" };
+    if (url.includes("dailyleaders")) return { ok: true, status: 200, text: async () => "<table></table>" };
+    if (url.includes("NBA_2027.html")) return { ok: true, status: 200, text: async () => pages.pace.ok ? pages.pace.html : "" };
+    if (url.includes("sportsline")) return { ok: true, status: 200, text: async () => pages.sportsline.ok ? pages.sportsline.html : "" };
+    if (url.includes("hashtagbasketball")) return { ok: true, status: 200, text: async () => pages.hashtag.ok ? pages.hashtag.html : "" };
+    return { ok: false, status: 404, text: async () => "" };
+  });
+  assert.equal(collected.ok, true);
+  assert.equal(urls.some((url) => url.includes("bettingpros") || url.includes("/events")), false);
+  assert.equal(urls.some((url) => url.includes("round/options")), true);
+  if (!collected.ok) return;
+  assert.equal(collected.fetched.dimers?.ok, false);
+  const seeded = emptyDatabase();
+  seeded.projections.push({
+    playerId: "doncilu01",
+    gameId: "2026-11-02|TOR@LAL",
+    source: "dimers",
+    season: CURRENT_SEASON,
+    points: 99,
+    rebounds: 99,
+    minutes: null,
+    sourceTimestamp: retrievedAt,
+  });
+  const committed = commitProjections(seeded, "2026-11-02", collected);
+  assert.ok(committed.db);
+  assert.match(committed.message, /Dimers did not load/);
+  assert.match(committed.message, /SportsLine stays the baseline/);
+  assert.equal(committed.db?.projections.some((row) => row.source === "dimers"), false);
+  const sportsline = committed.db?.projections.find((row) => row.source === "sportsline");
+  assert.equal(sportsline?.points, 32.3);
+  const slate = buildSlate(committed.db ?? emptyDatabase(), "2026-11-02");
+  const luka = slate.rows.find((row) => row.playerId === "doncilu01");
+  assert.equal(luka?.stats.points.baseline, 32.3);
+  assert.equal(luka?.stats.points.adjustments.some((row) => row.key === "dimers"), false);
 });

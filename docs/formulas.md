@@ -39,7 +39,7 @@ A lower divisor moves the projection more. `10000` is the workbook’s way to tu
 
 3. **The prop line is not the forecast.** NumberFire’s approximate `XLOOKUP` is not used. File joins stay exact ids through `source_id_map`. The live refresh also accepts one exact normalized name on the same team. On the live slate the points line is only the last-15 weight and the minutes-share weight. Rebounds still do not subtract the line.
 
-4. **Missing inputs.** A text lookup used to turn the whole formula into `"no game"` or `"error"`, including a missing optional term. Optional adjustments are now flagged and skipped. The stat is blocked only when no numeric outside projection exists for it. Points + rebounds is blocked unless both stats project. Present sources other than NumberFire are averaged.
+4. **Missing inputs.** A text lookup used to turn the whole formula into `"no game"` or `"error"`, including a missing optional term. Optional adjustments are now flagged and skipped. The stat is blocked only when no numeric outside projection exists for it. Points + rebounds is blocked unless both stats project. When both SportsLine and Dimers have the stat, the baseline is SportsLine × 0.65 + Dimers × 0.35. If one is missing, the other is the full baseline. If Dimers did not load, present sources other than NumberFire are averaged.
 
 5. **Pace is the opponent’s season pace minus the league average.** Basketball-Reference’s team table supplies that pace. Points divide the difference by 5 and rebounds by 7.5. The workbook’s last-10 blend is not available on that page, so last-10 is not invented. Opponent rebounds stay unused.
 
@@ -49,13 +49,13 @@ A lower divisor moves the projection more. `10000` is the workbook’s way to tu
 
 8. **Grading.** The sheet graded a win when the projection and the actual finished on the same side of the line, and it fell through to Push when the projection equaled the line. A projection equal to the line is now **no pick**. Actual equal to the line is still a push. DNPs and games that are not final, or final games missing a stat, are flagged separately and are not wins, losses, or voids. No sportsbook void rule is applied. Rows 67–72 only counted results whose edge cleared 4, 1, or 3 points. That filter is not carried forward. Win rate is wins / (wins + losses). Mean absolute error is the average of `|actual − saved projection|`, excluding DNPs and unresolved games.
 
-Pregame projection, line, odds, and timestamp are stored when a line exists. Projections loads ESPN, Basketball Reference, SportsLine, and Hashtag, grades games already on the desk, and does not replace those saved projections or lines. Lines loads BettingPros points and rebounds and can replace a typed number until actuals are stored. If a source fails, that click stops and the last saved slate stays. History is the page that compares those saved rows with the results. A stat with no line is left out. If no pregame row was saved, a postgame number is not invented.
+Pregame projection, line, odds, and timestamp are stored when a line exists. Projections loads ESPN, Basketball Reference, SportsLine, Dimers, and Hashtag, grades games already on the desk, and does not replace those saved projections or lines. Lines loads BettingPros points and rebounds and can replace a typed number until actuals are stored. If a source fails, that click stops and the last saved slate stays. Dimers is the exception: if that fetch fails, SportsLine stays the baseline and the run notes that Dimers did not load. History is the page that compares those saved rows with the results. A stat with no line is left out. If no pregame row was saved, a postgame number is not invented.
 
 ## Live slate
 
 The desk now runs on the published pages, not the three-source workbook average.
 
-SportsLine PTS, MIN, and TRB are the outside projection. The PROJ column is ignored. NumberFire is ignored. Pace and opponent rebounds are not applied. Hashtag publishes points and rebounds allowed by team and position; the adjustment is that number minus the position average, divided by the DvP strength.
+Points and rebounds are SportsLine × 0.65 + Dimers × 0.35 when both are present for that player and stat. If one is missing, the other is the full baseline and the row notes which source is missing. If Dimers does not load, SportsLine stays the baseline and the run notes that. SportsLine minutes stay the minutes. The PROJ column is ignored. NumberFire is ignored. Pace and opponent rebounds are not applied. Hashtag publishes points and rebounds allowed by team and position; the adjustment is that number minus the position average, divided by the DvP strength.
 
 The points line is inside two weights only: last-15 points per game minus the line, divided by 10, and team points times minutes/48 times usage/100, minus the line, divided by 3. Usage is Basketball-Reference season USG%, not points per 100 possessions. Team points in that weight are half the total plus the spread when the team is favored and minus it when not. A negative spread is the favorite. The half-spread figure stays on the trace as context and is not the minutes input.
 
@@ -65,4 +65,4 @@ Today's refresh drops sample rows and matches an exact normalized name on the sa
 
 ## Trace
 
-Each saved and previewed stat shows baseline, then each adjustment with its input, divisor, and delta, then the projection. Skipped terms say why. Points + rebounds shows the two projections and their sum, with no extra adjustments.
+Each saved and previewed stat shows the SportsLine projection first, then the Dimers number and the 65/35 weight, then each adjustment with its input, divisor, and delta, then the projection. A missing source is noted on that row. Skipped terms say why. Points + rebounds shows the two projections and their sum, with no extra adjustments.

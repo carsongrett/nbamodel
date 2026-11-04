@@ -2,6 +2,7 @@ import { applyModelRun, type Database, type ModelMessage } from "../engine";
 import { applyPublicPages, type FetchedPage, type PublicFetch } from "./apply";
 import { applyBettingProsProbe } from "./apply-bettingpros";
 import { fetchBettingProsDay, type ProbeResult } from "./bettingpros";
+import { fetchDimersSlate } from "./dimers";
 import { applyEspnOdds, fetchEspnOdds, type EspnGameOdds } from "./espn";
 import { pageIsCurrentSeason } from "./parsers";
 import { dailyLeadersUrl, shiftDate } from "./teams";
@@ -85,6 +86,8 @@ export async function collectProjectionSources(date: string, savedAt: string, fe
   const hashtagSeason = seasonPage("Hashtag defense vs position", hashtag.html);
   if (hashtagSeason) return hashtagSeason;
 
+  const dimers = await fetchDimersSlate(date, sportsline.html, espn.games, fetchPage);
+
   const fetched: PublicFetch = {
     advanced: page(ADVANCED_URL, usage.html),
     perGame: page(PER_GAME_URL, perGame.html),
@@ -93,6 +96,7 @@ export async function collectProjectionSources(date: string, savedAt: string, fe
     actuals: page(dailyLeadersUrl(date), boxScores.html),
     sportsline: page(SPORTSLINE_URL, sportsline.html),
     hashtag: page(HASHTAG_URL, hashtag.html),
+    dimers,
     retrievedAt: savedAt,
   };
   return { ok: true, savedAt, espn: espn.games, fetched };
@@ -127,10 +131,12 @@ export function commitProjections(
   const messages = [...applied.messages, ...espnApplied.messages, ...ran.messages];
   const graded = messages.find((item) => item.message.startsWith("Basketball Reference leaders graded"));
   const saved = messages.find((item) => item.message.startsWith("Saved "));
+  const dimersNote = messages.find((item) => item.message.startsWith("Dimers did not load"));
   const lead = saved?.message ?? `Saved the ${date} slate.`;
+  const parts = [lead, graded?.message, dimersNote?.message].filter((item): item is string => Boolean(item));
   return {
     db: ran.db,
-    message: graded ? `${lead} ${graded.message}` : lead,
+    message: parts.join(" "),
     messages,
   };
 }
