@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Settings, SlateGame, SlateView, Stat } from "../lib/engine";
+import { highestDeltas } from "../lib/highest-deltas";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
 import Trace from "./Trace";
@@ -195,6 +196,21 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       }))
       .filter((item) => item.rows.length > 0);
   }, [slate, teamId]);
+  const topDeltas = useMemo(() => highestDeltas(
+    (slate?.rows ?? []).map((row) => {
+      const cell = row.stats[stat];
+      return {
+        playerId: row.playerId,
+        gameId: row.gameId,
+        playerName: row.playerName,
+        teamId: row.teamId,
+        opponentId: row.opponentId,
+        projection: cell.projection,
+        line: cell.line,
+      };
+    }),
+    teamId,
+  ), [slate, stat, teamId]);
 
   async function readFile(file: File | undefined) {
     if (!file) return;
@@ -346,6 +362,41 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
             </div>
           </details>
         ))}
+        <details className="game">
+          <summary>
+            <span className="player">Highest deltas</span>
+          </summary>
+          {topDeltas.length === 0 ? (
+            <p className="empty-games">No players with a line for this stat.</p>
+          ) : (
+            <div className="table-wrap game-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Player</th>
+                    <th>Team</th>
+                    <th>Opp</th>
+                    <th className="num">Projection</th>
+                    <th className="num">Line</th>
+                    <th className="num">Delta</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topDeltas.map((row) => (
+                    <tr key={`${row.playerId}|${row.gameId}`}>
+                      <td className="player">{row.playerName}</td>
+                      <td>{row.teamId}</td>
+                      <td>{row.opponentId}</td>
+                      <td className="num">{fmt(row.projection)}</td>
+                      <td className="num">{fmt(row.line, 1)}</td>
+                      <td className="num delta" style={deltaStyle(row.delta)}>{fmt(row.delta)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </details>
       </div>
 
       <div className="panels">
