@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Stat } from "../lib/engine";
+import { CURRENT_SEASON, buildSlate, emptyDatabase, summarize, type Stat } from "../lib/engine";
 import {
+  HISTORY_RESULT_OPTIONS,
   applyHistoryFilters,
+  groupHistoryByGame,
+  historyResultFilter,
   historyResultText,
+  historyScoreLabel,
+  historySummary,
   hitRateByLineDistance,
   matchesHistoryResult,
   type HistoryCell,
+  type HistoryGame,
   type HistoryRow,
 } from "../lib/history";
 
@@ -81,25 +87,27 @@ test("result text matches the History column, including NOT SAVED", () => {
   assert.equal(historyResultText(ungraded), "Not saved");
 });
 
-test("result filter defaults to every row and can select win, loss, or not saved", () => {
+test("result filter keeps saved rows and can select win or loss", () => {
   const rows = slate();
+  assert.deepEqual(HISTORY_RESULT_OPTIONS.map((item) => item.id), ["all", "win", "loss"]);
+  assert.equal(historyResultFilter("not_saved"), "all");
+  assert.equal(historyResultFilter("win"), "win");
+
   const all = applyHistoryFilters(rows, { gameId: "", teamId: "", stat: "points", result: "all" });
-  assert.equal(all.rows.length, rows.length);
+  assert.equal(all.rows.length, 10);
   assert.deepEqual(all.rows.map((item) => historyResultText(item.stats.points)), [
     "Win",
     "Loss",
     "Win",
     "Push",
-    "Not saved",
-    "Not saved",
     "DNP",
     "No pick",
     "Unresolved",
-    "Not saved",
     "Win",
     "Win",
     "Loss",
   ]);
+  assert.ok(all.rows.every((item) => historyResultText(item.stats.points) !== "Not saved"));
 
   const wins = applyHistoryFilters(rows, { gameId: "", teamId: "", stat: "points", result: "win" });
   assert.deepEqual(wins.rows.map((item) => item.stats.points.grade), ["win", "win", "win", "win"]);
@@ -109,11 +117,11 @@ test("result filter defaults to every row and can select win, loss, or not saved
   assert.equal(losses.rows.length, 2);
   assert.ok(losses.rows.every((item) => historyResultText(item.stats.points) === "Loss"));
 
-  const unsaved = applyHistoryFilters(rows, { gameId: "", teamId: "", stat: "points", result: "not_saved" });
-  assert.equal(unsaved.rows.length, 3);
-  assert.ok(unsaved.rows.every((item) => historyResultText(item.stats.points) === "Not saved"));
-  assert.equal(matchesHistoryResult(push, "not_saved"), false);
+  const ignored = applyHistoryFilters(rows, { gameId: "", teamId: "", stat: "points", result: historyResultFilter("not_saved") });
+  assert.equal(ignored.rows.length, all.rows.length);
   assert.equal(matchesHistoryResult(push, "all"), true);
+  assert.equal(matchesHistoryResult(previewWin, "all"), false);
+  assert.equal(matchesHistoryResult(ungraded, "all"), false);
 });
 
 test("result filter follows the selected stat and does not change saved rows", () => {
@@ -133,7 +141,13 @@ test("game and team filters narrow the table without dropping pushes from All", 
   const rows = slate();
   const bos = applyHistoryFilters(rows, { gameId: "", teamId: "BOS", stat: "points", result: "all" });
   assert.ok(bos.rows.every((item) => item.teamId === "BOS"));
-  assert.equal(bos.rows.length, 8);
+  assert.deepEqual(bos.rows.map((item) => historyResultText(item.stats.points)), [
+    "Win",
+    "Win",
+    "DNP",
+    "No pick",
+    "Unresolved",
+  ]);
 
   const gameB = applyHistoryFilters(rows, { gameId: "game_b", teamId: "", stat: "points", result: "all" });
   assert.deepEqual(gameB.rows.map((item) => historyResultText(item.stats.points)), ["Win", "Push", "Win"]);
@@ -191,7 +205,7 @@ test("a row counts in every threshold its absolute distance clears", () => {
   ]);
 });
 
-test("distance groups follow the slate filters and stay empty for not saved", () => {
+test("distance groups follow the slate filters and count saved wins and losses", () => {
   const rows = slate();
   const all = applyHistoryFilters(rows, { gameId: "", teamId: "", stat: "points", result: "all" });
   assert.deepEqual(all.distance.map((group) => [group.wins, group.losses]), [
@@ -215,15 +229,6 @@ test("distance groups follow the slate filters and stay empty for not saved", ()
   assert.ok(winsOnly.distance.every((group) => group.losses === 0));
   assert.deepEqual(winsOnly.distance.map((group) => group.wins), [3, 3, 3, 2]);
 
-  const unsaved = applyHistoryFilters(rows, { gameId: "", teamId: "", stat: "points", result: "not_saved" });
-  assert.equal(unsaved.rows.length, 3);
-  assert.deepEqual(unsaved.distance, [
-    { threshold: 1, wins: 0, losses: 0, hitRate: null },
-    { threshold: 2, wins: 0, losses: 0, hitRate: null },
-    { threshold: 3, wins: 0, losses: 0, hitRate: null },
-    { threshold: 4, wins: 0, losses: 0, hitRate: null },
-  ]);
-
   const rebounds = applyHistoryFilters(rows, { gameId: "", teamId: "", stat: "rebounds" as Stat, result: "all" });
   assert.deepEqual(rebounds.distance.map((group) => [group.wins, group.losses, group.hitRate]), [
     [0, 1, 0],
@@ -238,4 +243,133 @@ test("an empty filter still reports each distance group", () => {
   assert.deepEqual(view.rows, []);
   assert.deepEqual(view.distance.map((group) => group.hitRate), [null, null, null, null]);
   assert.ok(view.distance.every((group) => group.wins === 0 && group.losses === 0));
+});
+
+test("summary counts saved rows and leaves not saved out", () => {
+  const cells = [
+    { ...savedWin, error: 5 },
+    { ...savedLoss, error: -2.5 },
+    { ...closeWin, error: 0.4 },
+    { ...push, error: 10 },
+    { ...previewWin, error: 20 },
+    { ...unavailable, error: 8 },
+    { ...dnp, error: 3 },
+    { ...unresolved, error: 4 },
+    { ...ungraded, error: 1 },
+  ];
+  const summary = historySummary(cells);
+  const graded = cells.filter((cell) => historyResultText(cell) !== "Not saved");
+  const expected = summarize(graded.map((cell) => ({ grade: cell.grade, error: cell.error ?? null })));
+  assert.equal(summary.wins, 2);
+  assert.equal(summary.losses, 1);
+  assert.equal(summary.pushes, 1);
+  assert.equal(summary.wins, expected.wins);
+  assert.equal(summary.losses, expected.losses);
+  assert.equal(summary.pushes, expected.pushes);
+  assert.equal(summary.winRate, expected.winRate);
+  assert.equal(summary.meanAbsoluteError, expected.meanAbsoluteError);
+  assert.equal(summary.winRate, 2 / 3);
+});
+
+function game(partial: Partial<HistoryGame> & Pick<HistoryGame, "gameId" | "label">): HistoryGame {
+  return {
+    status: "final",
+    homeTeamId: "WAS",
+    awayTeamId: "ATL",
+    spread: null,
+    total: null,
+    tipAt: null,
+    tipLabel: null,
+    ...partial,
+  };
+}
+
+test("final score uses a stored score and stays blank without one", () => {
+  assert.equal(historyScoreLabel(game({
+    gameId: "g",
+    label: "ATL at WAS",
+    awayTeamId: "ATL",
+    homeTeamId: "WAS",
+    awayScore: 110,
+    homeScore: 104,
+  })), "ATL 110, WAS 104");
+  assert.equal(historyScoreLabel(game({
+    gameId: "g",
+    label: "ATL at WAS",
+    status: "scheduled",
+    awayScore: 110,
+    homeScore: 104,
+  })), null);
+  assert.equal(historyScoreLabel(game({
+    gameId: "g",
+    label: "ATL at WAS",
+    status: "in_progress",
+    awayScore: 80,
+    homeScore: 77,
+  })), null);
+  assert.equal(historyScoreLabel(game({
+    gameId: "g",
+    label: "ATL at WAS",
+    awayScore: 110,
+  })), null);
+  assert.equal(historyScoreLabel(game({
+    gameId: "g",
+    label: "ATL at WAS",
+    awayScore: null,
+    homeScore: null,
+  })), null);
+});
+
+test("history groups saved players by the same tip order as Today", () => {
+  const db = emptyDatabase();
+  db.games.push(
+    { gameId: "2026-11-04|ATL@WAS", season: CURRENT_SEASON, gameDate: "2026-11-04", homeTeamId: "WAS", awayTeamId: "ATL", status: "final", tipAt: "2026-11-05T02:00:00Z" },
+    { gameId: "2026-11-04|CHA@BKN", season: CURRENT_SEASON, gameDate: "2026-11-04", homeTeamId: "BKN", awayTeamId: "CHA", status: "final", tipAt: "2026-11-05T00:00:00Z" },
+    { gameId: "2026-11-04|DEN@LAL", season: CURRENT_SEASON, gameDate: "2026-11-04", homeTeamId: "LAL", awayTeamId: "DEN", status: "scheduled", tipAt: "2026-11-04T23:30:00Z" },
+    { gameId: "2026-11-04|MIA@BOS", season: CURRENT_SEASON, gameDate: "2026-11-04", homeTeamId: "BOS", awayTeamId: "MIA", status: "in_progress" },
+  );
+  const slateView = buildSlate(db, "2026-11-04");
+  const rows = [
+    row({ gameId: "2026-11-04|ATL@WAS", teamId: "ATL", points: savedWin }),
+    row({ gameId: "2026-11-04|ATL@WAS", teamId: "WAS", points: savedLoss }),
+    row({ gameId: "2026-11-04|CHA@BKN", teamId: "CHA", points: previewWin }),
+    row({ gameId: "2026-11-04|DEN@LAL", teamId: "DEN", points: push }),
+    row({ gameId: "2026-11-04|MIA@BOS", teamId: "MIA", points: dnp }),
+    { ...row({ gameId: "missing", teamId: "ORL", points: noPick }), gameLabel: "ORL at PHI" },
+  ];
+  const before = structuredClone(rows);
+  const view = applyHistoryFilters(rows, { gameId: "", teamId: "", stat: "points", result: "all" });
+  const order = slateView.games.map((game) => game.gameId);
+  const groups = groupHistoryByGame(view.rows, slateView.games);
+  assert.deepEqual(groups.map((group) => group.game.gameId), [
+    "2026-11-04|DEN@LAL",
+    "2026-11-04|ATL@WAS",
+    "2026-11-04|MIA@BOS",
+    "missing",
+  ]);
+  assert.deepEqual(order.slice(0, 3), [
+    "2026-11-04|DEN@LAL",
+    "2026-11-04|CHA@BKN",
+    "2026-11-04|ATL@WAS",
+  ]);
+  assert.deepEqual(groups[0].rows.map((item) => item.teamId), ["DEN"]);
+  assert.deepEqual(groups[1].rows.map((item) => item.teamId), ["ATL", "WAS"]);
+  assert.equal(groups[0].game.tipLabel, "5:30 PM CT");
+  assert.equal(groups[0].scoreLabel, null);
+  assert.equal(groups[1].scoreLabel, null);
+  assert.equal(groups[2].game.tipLabel, null);
+  assert.equal(groups[2].scoreLabel, null);
+  assert.equal(groups[3].game.label, "ORL at PHI");
+  assert.equal(groups[3].scoreLabel, null);
+  assert.ok(groups.every((group) => group.rows.length > 0));
+  assert.equal(groups.some((group) => group.game.gameId === "2026-11-04|CHA@BKN"), false);
+  assert.deepEqual(rows, before);
+
+  const withScore = slateView.games.map((item) => item.gameId === "2026-11-04|ATL@WAS"
+    ? { ...item, awayScore: 110, homeScore: 104 }
+    : item);
+  const scored = groupHistoryByGame(view.rows, withScore);
+  assert.equal(scored[1].scoreLabel, "ATL 110, WAS 104");
+  assert.equal(scored[0].scoreLabel, null);
+  assert.equal(historyScoreLabel({ ...groups[0].game, status: "scheduled", awayScore: 110, homeScore: 104 }), null);
 });
