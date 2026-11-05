@@ -11,6 +11,7 @@ import {
   historySummary,
   type HistoryResultFilter,
 } from "../lib/history";
+import { betPlayers, formatStake } from "../lib/bets";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
 import Trace from "./Trace";
@@ -139,6 +140,10 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
     () => groupHistoryByGame(rows, slate?.games ?? []),
     [rows, slate],
   );
+  const listedBets = useMemo(
+    () => groups.flatMap((group) => betPlayers(group.rows, stat)),
+    [groups, stat],
+  );
 
   useEffect(() => {
     if (!gameId) return;
@@ -244,6 +249,33 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
           <p className="meta board-note">
             Projection and line are the saved pregame record. Error is the actual minus that projection. {STATS.find((item) => item.id === stat)?.label}.
           </p>
+          {slate ? (
+            <section className="card bet-players" aria-label="Bet players">
+              <h2>Bet players</h2>
+              {listedBets.length === 0 ? null : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Player</th>
+                        <th className="num">Units</th>
+                        <th>Result</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {listedBets.map((player) => (
+                        <tr key={`${player.playerId}|${player.gameId}`}>
+                          <td>{player.playerName}</td>
+                          <td className="num">{formatStake(player.units)}</td>
+                          <td><span className={`grade ${player.result.toLowerCase()}`}>{player.result}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          ) : null}
           <div className="game-list">
             {groups.length === 0 ? (
               <p className="card empty-games">No players for this filter.</p>
@@ -262,11 +294,11 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                       <tr>
                         <th>Player</th>
                         <th>Team</th>
-                        <th>Opp</th>
                         <th className="num">Projection</th>
                         <th className="num">Line</th>
                         <th className="num">Actual</th>
                         <th className="num">Error</th>
+                        <th className="num">Units</th>
                         <th>Result</th>
                       </tr>
                     </thead>
@@ -282,7 +314,6 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                               {archived ? <Trace stat={cell} locked={row.locked} /> : null}
                             </td>
                             <td>{row.teamId}</td>
-                            <td>{row.opponentId}</td>
                             <td className="num">
                               {archived ? fmt(cell.projection) : "—"}
                               <div className="meta">{archived ? savedWhen(cell.savedAt) : "Not saved"}</div>
@@ -290,6 +321,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                             <td className="num">{archived ? fmt(cell.line, 1) : "—"}</td>
                             <td className="num">{fmt(cell.actual, 1)}</td>
                             <td className="num">{archived ? fmt(cell.error) : "—"}</td>
+                            <td className="num">{cell.units != null && cell.units > 0 ? formatStake(cell.units) : "—"}</td>
                             <td><span className={`grade ${archived ? cell.grade : "ungraded"}`}>{historyResultText(cell)}</span></td>
                           </tr>
                         );
