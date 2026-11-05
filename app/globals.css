@@ -105,6 +105,13 @@ th { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; letter-
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
 td.delta { border-radius: 6px; }
 .player { font-weight: 600; }
+.lineup-note {
+  margin-left: 8px;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 13px;
+  white-space: nowrap;
+}
 .meta { color: var(--muted); font-size: 13px; }
 .flags { display: flex; flex-wrap: wrap; gap: 4px; max-width: 280px; }
 .flag { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 11px; border-radius: 999px; padding: 2px 7px; background: #f6ead8; color: var(--warn); }
