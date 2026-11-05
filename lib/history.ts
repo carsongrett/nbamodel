@@ -128,17 +128,32 @@ export type HistorySummary = {
   pushes: number;
   winRate: number | null;
   meanAbsoluteError: number | null;
+  vegasMeanAbsoluteError: number | null;
 };
 
-/** Wins, losses, pushes, and mean absolute error for saved History rows. Not saved rows stay out. */
-export function historySummary(
-  cells: readonly (Pick<HistoryCell, "source" | "grade"> & { error?: number | null })[],
-): HistorySummary {
+type SummaryCell = Pick<HistoryCell, "source" | "grade"> & {
+  error?: number | null;
+  line?: number | null;
+  actual?: number | null;
+};
+
+function isFiniteNumber(value: number | null | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/**
+ * Wins, losses, pushes, and absolute errors for saved History rows. Not saved rows stay out.
+ * Model abs error is the average of |projection − actual| on the saved rows that already count.
+ * Vegas abs error is the average of |line − actual| on those same rows when the line and actual are present.
+ */
+export function historySummary(cells: readonly SummaryCell[]): HistorySummary {
   let wins = 0;
   let losses = 0;
   let pushes = 0;
   let errorTotal = 0;
   let errorCount = 0;
+  let vegasTotal = 0;
+  let vegasCount = 0;
   for (const cell of cells) {
     if (historyResultText(cell) === "Not saved") continue;
     if (cell.grade === "win") wins += 1;
@@ -148,6 +163,10 @@ export function historySummary(
     if (error != null && cell.grade !== "dnp" && cell.grade !== "unresolved") {
       errorTotal += Math.abs(error);
       errorCount += 1;
+      if (isFiniteNumber(cell.line) && isFiniteNumber(cell.actual)) {
+        vegasTotal += Math.abs(cell.line - cell.actual);
+        vegasCount += 1;
+      }
     }
   }
   const eligible = wins + losses;
@@ -157,6 +176,7 @@ export function historySummary(
     pushes,
     winRate: eligible === 0 ? null : wins / eligible,
     meanAbsoluteError: errorCount === 0 ? null : errorTotal / errorCount,
+    vegasMeanAbsoluteError: vegasCount === 0 ? null : vegasTotal / vegasCount,
   };
 }
 
