@@ -480,7 +480,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
 
         <section className="card">
           <h2>Adjustment settings</h2>
-          <p className="sub">Drag a divisor. A lower number moves that term more. Save settings applies it to the board. 10000 still turns a term off if you import that value.</p>
           {settings ? (
             <form className="settings" onSubmit={(event) => { event.preventDefault(); void put("/api/settings", { settings }, "Saving settings…"); }}>
               {SETTING_FIELDS.map((field) => {
