@@ -99,6 +99,18 @@ function gameOdds(game: SlateGame): string {
   return parts.length ? parts.join(" · ") : "Spread and total not loaded";
 }
 
+const INJURY_LABELS = new Set(["Questionable", "Probable", "Doubtful", "Out", "Out for season"]);
+
+function LineupNote({ note }: { note: string }) {
+  const parts = note.split(" · ");
+  return (
+    <span className="lineup-note">{parts.map((part, index) => {
+      const word = INJURY_LABELS.has(part) ? <span className="lineup-injury">{part}</span> : part;
+      return <span key={`${index}-${part}`}>{index > 0 ? " · " : null}{word}</span>;
+    })}</span>
+  );
+}
+
 function saveLabel(line: number | null, source: string): string {
   if (line == null) return "Preview";
   return source === "saved" ? "Saved pregame" : "Preview";
@@ -358,7 +370,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                         <td>
                           <div className="player">
                             {row.playerName}
-                            {note ? <span className="lineup-note">{note}</span> : null}
+                            {note ? <LineupNote note={note} /> : null}
                           </div>
                           {cell.flags.filter((flag) => flag.includes("missing") && flag.includes("baseline")).map((flag) => (
                             <div className="meta" key={flag}>{flag}</div>
@@ -435,7 +447,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                         <td>
                           <div className="player">
                             {row.playerName}
-                            {note ? <span className="lineup-note">{note}</span> : null}
+                            {note ? <LineupNote note={note} /> : null}
                           </div>
                         </td>
                         <td>{row.teamId}</td>
