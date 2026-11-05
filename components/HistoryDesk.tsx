@@ -220,7 +220,8 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
               <div><span>Losses</span><strong>{summary.losses}</strong></div>
               <div><span>Win rate</span><strong>{pct(summary.winRate)}</strong></div>
               <div><span>Pushes</span><strong>{summary.pushes}</strong></div>
-              <div><span>Mean abs. error</span><strong>{fmt(summary.meanAbsoluteError, 2)}</strong></div>
+              <div><span>Model abs error</span><strong>{fmt(summary.meanAbsoluteError, 2)}</strong></div>
+              <div><span>Vegas abs error</span><strong>{fmt(summary.vegasMeanAbsoluteError, 2)}</strong></div>
             </div>
           ) : null}
 

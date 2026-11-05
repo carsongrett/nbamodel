@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { CURRENT_SEASON, buildSlate, emptyDatabase, summarize, type Stat } from "../lib/engine";
 import {
@@ -269,6 +270,46 @@ test("summary counts saved rows and leaves not saved out", () => {
   assert.equal(summary.winRate, expected.winRate);
   assert.equal(summary.meanAbsoluteError, expected.meanAbsoluteError);
   assert.equal(summary.winRate, 2 / 3);
+  assert.equal(summary.vegasMeanAbsoluteError, null);
+});
+
+test("vegas abs error averages |line - actual| on the saved rows in the model error", () => {
+  const cells = [
+    { ...savedWin, actual: 30, error: 5 },
+    { ...savedLoss, actual: 16, error: -2 },
+    { ...closeWin, actual: 11, error: 0.6 },
+    { ...push, actual: 20, error: -10 },
+    { ...previewWin, actual: 50, error: 10 },
+    { ...unavailable, actual: 8, error: 1 },
+    { ...dnp, actual: 4, error: 3 },
+    { ...unresolved, actual: 9, error: 4 },
+    { ...noPick, actual: 14, error: 1, line: null },
+    { ...savedWin, actual: 0, error: null, line: 2 },
+  ];
+  const summary = historySummary(cells);
+  const graded = cells.filter((cell) => historyResultText(cell) !== "Not saved");
+  const expected = summarize(graded.map((cell) => ({ grade: cell.grade, error: cell.error ?? null })));
+  assert.equal(summary.wins, expected.wins);
+  assert.equal(summary.losses, expected.losses);
+  assert.equal(summary.pushes, expected.pushes);
+  assert.equal(summary.winRate, expected.winRate);
+  assert.equal(summary.meanAbsoluteError, expected.meanAbsoluteError);
+  assert.equal(summary.wins, 3);
+  assert.equal(summary.losses, 1);
+  assert.equal(summary.pushes, 1);
+  assert.equal(summary.winRate, 0.75);
+  const model = [5, 2, 0.6, 10, 1];
+  assert.equal(summary.meanAbsoluteError, model.reduce((sum, error) => sum + error, 0) / model.length);
+  const vegas = [Math.abs(20 - 30), Math.abs(20.5 - 16), Math.abs(10 - 11), Math.abs(20 - 20)];
+  assert.equal(summary.vegasMeanAbsoluteError, vegas.reduce((sum, error) => sum + error, 0) / vegas.length);
+});
+
+test("History labels model and vegas abs error from the saved stat on the slate", () => {
+  const source = readFileSync(new URL("../components/HistoryDesk.tsx", import.meta.url), "utf8");
+  assert.match(source, /historySummary\(\(slate\?\.rows \?\? \[\]\)\.map\(\(row\) => row\.stats\[stat\]\)\)/);
+  assert.match(source, /<span>Model abs error<\/span><strong>\{fmt\(summary\.meanAbsoluteError, 2\)\}<\/strong>/);
+  assert.match(source, /<span>Vegas abs error<\/span><strong>\{fmt\(summary\.vegasMeanAbsoluteError, 2\)\}<\/strong>/);
+  assert.doesNotMatch(source, /Mean abs\. error/);
 });
 
 function game(partial: Partial<HistoryGame> & Pick<HistoryGame, "gameId" | "label">): HistoryGame {
