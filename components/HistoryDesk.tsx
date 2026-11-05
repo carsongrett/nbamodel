@@ -5,8 +5,10 @@ import type { SlateView, Stat } from "../lib/engine";
 import {
   HISTORY_RESULT_OPTIONS,
   applyHistoryFilters,
+  groupHistoryByGame,
   historyResultFilter,
   historyResultText,
+  historySummary,
   type HistoryResultFilter,
 } from "../lib/history";
 import AboutDesk from "./AboutDesk";
@@ -108,7 +110,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
       setPayload(body);
       if (!response.ok) setStatus(body.error || "That slate could not be loaded.");
       else if (body.slate && body.slate.rows.length === 0) setStatus(`No players stored for ${slateLabel(date)}.`);
-      else setStatus(`${body.slate?.rows.length ?? 0} players on ${slateLabel(date)}.`);
+      else setStatus("");
     })();
     return () => {
       cancel = true;
@@ -121,7 +123,28 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
     [slate, gameId, teamId, stat, result],
   );
   const rows = view.rows;
-  const summary = slate?.summaries[stat];
+  const summary = useMemo(
+    () => historySummary((slate?.rows ?? []).map((row) => row.stats[stat])),
+    [slate, stat],
+  );
+  const gameOptions = useMemo(() => {
+    const savedIds = new Set(
+      (slate?.rows ?? [])
+        .filter((row) => historyResultText(row.stats[stat]) !== "Not saved")
+        .map((row) => row.gameId),
+    );
+    return (slate?.games ?? []).filter((game) => savedIds.has(game.gameId));
+  }, [slate, stat]);
+  const groups = useMemo(
+    () => groupHistoryByGame(rows, slate?.games ?? []),
+    [rows, slate],
+  );
+
+  useEffect(() => {
+    if (!gameId) return;
+    if (gameOptions.some((game) => game.gameId === gameId)) return;
+    setGameId("");
+  }, [gameId, gameOptions]);
 
   return (
     <main className="shell">
@@ -163,7 +186,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
               Game
               <select value={gameId} onChange={(event) => setGameId(event.target.value)}>
                 <option value="">All games</option>
-                {slate?.games.map((game) => <option key={game.gameId} value={game.gameId}>{game.label}</option>)}
+                {gameOptions.map((game) => <option key={game.gameId} value={game.gameId}>{game.label}</option>)}
               </select>
             </label>
             <label>
@@ -188,10 +211,10 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
           </div>
 
           <section className="status" aria-live="polite">
-            <p>{status}</p>
+            <p>{slate && slate.rows.length > 0 ? `${rows.length} ${rows.length === 1 ? "player" : "players"} on ${slateLabel(slate.date)}.` : status}</p>
           </section>
 
-          {summary ? (
+          {slate ? (
             <div className="summary">
               <div><span>Wins</span><strong>{summary.wins}</strong></div>
               <div><span>Losses</span><strong>{summary.losses}</strong></div>
@@ -217,51 +240,64 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
             </section>
           ) : null}
 
-          <div className="table-wrap">
-            <table>
-              <caption className="meta" style={{ captionSide: "bottom", padding: 10 }}>
-                Projection and line are the saved pregame record. Error is the actual minus that projection. {STATS.find((item) => item.id === stat)?.label}.
-              </caption>
-              <thead>
-                <tr>
-                  <th>Player</th>
-                  <th>Team</th>
-                  <th>Opp</th>
-                  <th className="num">Projection</th>
-                  <th className="num">Line</th>
-                  <th className="num">Actual</th>
-                  <th className="num">Error</th>
-                  <th>Result</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 ? (
-                  <tr><td colSpan={8}>No players for this filter.</td></tr>
-                ) : rows.map((row) => {
-                  const cell = row.stats[stat];
-                  const archived = cell.source === "saved";
-                  return (
-                    <tr key={`${row.playerId}|${row.gameId}`}>
-                      <td>
-                        <div className="player">{row.playerName}</div>
-                        <div className="meta">{row.position} · {row.playerId}</div>
-                        {archived ? <Trace stat={cell} locked={row.locked} /> : null}
-                      </td>
-                      <td>{row.teamId}</td>
-                      <td>{row.opponentId}</td>
-                      <td className="num">
-                        {archived ? fmt(cell.projection) : "—"}
-                        <div className="meta">{archived ? savedWhen(cell.savedAt) : "Not saved"}</div>
-                      </td>
-                      <td className="num">{archived ? fmt(cell.line, 1) : "—"}</td>
-                      <td className="num">{fmt(cell.actual, 1)}</td>
-                      <td className="num">{archived ? fmt(cell.error) : "—"}</td>
-                      <td><span className={`grade ${archived ? cell.grade : "ungraded"}`}>{historyResultText(cell)}</span></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <p className="meta board-note">
+            Projection and line are the saved pregame record. Error is the actual minus that projection. {STATS.find((item) => item.id === stat)?.label}.
+          </p>
+          <div className="game-list">
+            {groups.length === 0 ? (
+              <p className="card empty-games">No players for this filter.</p>
+            ) : groups.map(({ game, rows: gameRows, scoreLabel }) => (
+              <section className="game" key={game.gameId}>
+                <h2 className="game-head">
+                  <span className="player">
+                    {game.label}
+                    {game.tipLabel ? <span className="game-time">{game.tipLabel}</span> : null}
+                  </span>
+                  {scoreLabel ? <span className="game-odds">{scoreLabel}</span> : null}
+                </h2>
+                <div className="table-wrap game-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Player</th>
+                        <th>Team</th>
+                        <th>Opp</th>
+                        <th className="num">Projection</th>
+                        <th className="num">Line</th>
+                        <th className="num">Actual</th>
+                        <th className="num">Error</th>
+                        <th>Result</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {gameRows.map((row) => {
+                        const cell = row.stats[stat];
+                        const archived = cell.source === "saved";
+                        return (
+                          <tr key={`${row.playerId}|${row.gameId}`}>
+                            <td>
+                              <div className="player">{row.playerName}</div>
+                              <div className="meta">{row.position} · {row.playerId}</div>
+                              {archived ? <Trace stat={cell} locked={row.locked} /> : null}
+                            </td>
+                            <td>{row.teamId}</td>
+                            <td>{row.opponentId}</td>
+                            <td className="num">
+                              {archived ? fmt(cell.projection) : "—"}
+                              <div className="meta">{archived ? savedWhen(cell.savedAt) : "Not saved"}</div>
+                            </td>
+                            <td className="num">{archived ? fmt(cell.line, 1) : "—"}</td>
+                            <td className="num">{fmt(cell.actual, 1)}</td>
+                            <td className="num">{archived ? fmt(cell.error) : "—"}</td>
+                            <td><span className={`grade ${archived ? cell.grade : "ungraded"}`}>{historyResultText(cell)}</span></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ))}
           </div>
         </>
       )}
