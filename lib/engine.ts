@@ -98,6 +98,8 @@ export type PropLine = {
   underOdds: number | null;
   source: string | null;
   sourceTimestamp: string | null;
+  /** Units staked with the model. Empty when he did not bet this stat. */
+  units?: number | null;
 };
 export type PlayerRate = {
   playerId: string;
@@ -210,6 +212,8 @@ export type PregameStat = {
   underOdds: number | null;
   savedAt: string;
   sourcesUsed: string[];
+  /** Units staked with the model for this saved stat. Empty when he did not bet. */
+  units?: number | null;
 };
 export type Database = {
   teams: Team[];
@@ -1347,6 +1351,7 @@ export function importRecords(db: Database, kind: ImportKind, rows: { rowNumber:
         underOdds: val(under),
         source: (row.values.source ?? "").trim() || null,
         sourceTimestamp: val(stamped),
+        units: next.lines.find((item) => item.playerId === player.id && item.gameId === game.id && item.stat === stat)?.units ?? null,
       });
     }
     next.lines = take(next.lines, incoming, (r) => `${r.playerId}|${r.gameId}|${r.stat}`);
@@ -1728,9 +1733,57 @@ export function setPropLine(
     underOdds: prior?.underOdds ?? null,
     source: "manual",
     sourceTimestamp: savedAt,
+    units: prior?.units ?? null,
   };
   const withLine = { ...db, lines: upsertByKey(db.lines, [row], (item) => `${item.playerId}|${item.gameId}|${item.stat}`).rows };
   return rememberPregame(withLine, playerId, gameId, stat, savedAt);
+}
+
+export function setBetUnits(
+  db: Database,
+  playerId: string,
+  gameId: string,
+  stat: Stat,
+  units: number | null,
+  savedAt: string,
+): { db: Database; error?: string } {
+  if (!db.players.some((p) => idsEqual(p.playerId, playerId))) return { db, error: "Unknown player id." };
+  if (!db.games.some((g) => idsEqual(g.gameId, gameId))) return { db, error: "Unknown game id." };
+  if (!STATS.includes(stat)) return { db, error: "Unknown stat." };
+  if (locked(db, playerId, gameId)) return { db, error: "Results are already stored. The bet was not changed." };
+  const sameLine = (row: PropLine) => idsEqual(row.playerId, playerId) && idsEqual(row.gameId, gameId) && row.stat === stat;
+  const sameSaved = (row: PregameStat) => idsEqual(row.playerId, playerId) && idsEqual(row.gameId, gameId) && row.stat === stat;
+  if (units == null) {
+    return {
+      db: {
+        ...db,
+        lines: db.lines.map((row) => sameLine(row) ? { ...row, units: null } : row),
+        pregame: db.pregame.map((row) => sameSaved(row) ? { ...row, units: null } : row),
+      },
+    };
+  }
+  if (!Number.isFinite(units) || units <= 0) return { db, error: "Units must be a positive number." };
+  const line = db.lines.find(sameLine);
+  if (!line) return { db, error: "A line is required before a bet is saved." };
+  const player = db.players.find((item) => idsEqual(item.playerId, playerId));
+  const game = db.games.find((item) => idsEqual(item.gameId, gameId));
+  if (!player || !game) return { db, error: "Unknown player or game." };
+  const evaled = evaluatePlayer(db, player, game);
+  const raw = stat === "points" ? evaled.points : stat === "rebounds" ? evaled.rebounds : evaled.combined;
+  const pick = edgeAndPick(raw.projection, line.line).pick;
+  if (pick !== "over" && pick !== "under") return { db, error: "The projection has to be above or below the line." };
+  const withLine = { ...db, lines: db.lines.map((row) => sameLine(row) ? { ...row, units } : row) };
+  if (withLine.pregame.some(sameSaved)) {
+    return {
+      db: {
+        ...withLine,
+        pregame: withLine.pregame.map((row) => sameSaved(row) ? { ...row, units } : row),
+      },
+    };
+  }
+  const remembered = rememberPregame(withLine, playerId, gameId, stat, savedAt);
+  if (!remembered.stored) return { db, error: remembered.reason ?? "No projection. The bet was not saved." };
+  return { db: remembered.db };
 }
 
 type Eval = {
@@ -1894,6 +1947,7 @@ function toPregame(playerId: string, gameId: string, date: string, stat: Stat, p
     line: line?.line ?? null,
     overOdds: line?.overOdds ?? null,
     underOdds: line?.underOdds ?? null,
+    units: line?.units ?? null,
     savedAt,
     sourcesUsed: projection.sourcesUsed,
   };
@@ -1974,6 +2028,7 @@ export type SlateStat = {
   line: number | null;
   overOdds: number | null;
   underOdds: number | null;
+  units: number | null;
   edge: number | null;
   pick: PickSide | null;
   actual: number | null;
@@ -2069,6 +2124,7 @@ function viewStat(
       line: null,
       overOdds: null,
       underOdds: null,
+      units: null,
       edge: null,
       pick: null,
       actual: actualNumber,
@@ -2091,6 +2147,7 @@ function viewStat(
       line: saved.line,
       overOdds: saved.overOdds,
       underOdds: saved.underOdds,
+      units: saved.units ?? null,
       edge: edge.edge,
       pick: edge.pick,
       actual: actualNumber,
@@ -2114,6 +2171,7 @@ function viewStat(
     line: shownLine,
     overOdds: line?.overOdds ?? null,
     underOdds: line?.underOdds ?? null,
+    units: line?.units ?? null,
     edge: edge.edge,
     pick: edge.pick,
     actual: actualNumber,

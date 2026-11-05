@@ -64,6 +64,7 @@ export function applyBettingProsProbe(db: Database, date: string, probe: ProbeRe
       };
       idMap = upsertByKey(idMap, [row], (item) => `${item.source}|${item.entityType}|${item.sourceId}`).rows;
     }
+    const prior = lines.find((row) => idsEqual(row.playerId, playerId) && idsEqual(row.gameId, gameId) && row.stat === stat);
     const line: PropLine = {
       playerId,
       gameId,
@@ -74,6 +75,7 @@ export function applyBettingProsProbe(db: Database, date: string, probe: ProbeRe
       underOdds: offer.underOdds,
       source: "bettingpros",
       sourceTimestamp: retrievedAt,
+      units: prior?.units ?? null,
     };
     lines = upsertByKey(lines, [line], (row) => `${row.playerId}|${row.gameId}|${row.stat}`).rows;
     stored++;

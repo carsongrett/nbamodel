@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Settings, SlateGame, SlateView, Stat } from "../lib/engine";
+import { formatStake } from "../lib/bets";
 import { highestDeltas } from "../lib/highest-deltas";
 import { noteForPlayer, type LineupTeam } from "../lib/sources/rotowire-lineups";
 import AboutDesk from "./AboutDesk";
@@ -345,9 +346,9 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                   <tr>
                     <th>Player</th>
                     <th>Team</th>
-                    <th>Opp</th>
                     <th className="num">Projection</th>
                     <th className="num">Line</th>
+                    <th className="num">Bet</th>
                     <th className="num">Delta</th>
                     <th className="num">Over</th>
                     <th className="num">Under</th>
@@ -371,7 +372,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                           <Trace stat={cell} locked={row.locked} />
                         </td>
                         <td>{row.teamId}</td>
-                        <td>{row.opponentId}</td>
                         <td className="num">
                           {cell.blockReason && cell.projection == null ? "Blocked" : fmt(cell.projection)}
                           <div className="meta">{saveLabel(cell.line, cell.source)}</div>
@@ -402,6 +402,27 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                             />
                           )}
                         </td>
+                        <td className="num">
+                          {row.locked ? (cell.units != null && cell.units > 0 ? formatStake(cell.units) : "—") : (
+                            <input
+                              className="line-input"
+                              type="number"
+                              inputMode="decimal"
+                              step="any"
+                              min="0"
+                              aria-label={`${row.playerName} ${stat} bet`}
+                              defaultValue={cell.units ?? ""}
+                              key={`${key}|${stat}|bet|${cell.units ?? ""}`}
+                              disabled={busy || cell.line == null}
+                              onBlur={(event) => {
+                                const next = event.target.value.trim();
+                                const current = cell.units == null ? "" : String(cell.units);
+                                if (next === current) return;
+                                void put("/api/bets", { playerId: row.playerId, gameId: row.gameId, stat, units: next }, "Saving the bet…");
+                              }}
+                            />
+                          )}
+                        </td>
                         <td className="num delta" style={deltaStyle(cell.edge)}>{fmt(cell.edge)}</td>
                         <td className="num">{odds(cell.overOdds)}</td>
                         <td className="num">{odds(cell.underOdds)}</td>
@@ -426,7 +447,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                   <tr>
                     <th>Player</th>
                     <th>Team</th>
-                    <th>Opp</th>
                     <th className="num">Projection</th>
                     <th className="num">Line</th>
                     <th className="num">Delta</th>
@@ -444,7 +464,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                           </div>
                         </td>
                         <td>{row.teamId}</td>
-                        <td>{row.opponentId}</td>
                         <td className="num">{fmt(row.projection)}</td>
                         <td className="num">{fmt(row.line, 1)}</td>
                         <td className="num delta" style={deltaStyle(row.delta)}>{fmt(row.delta)}</td>

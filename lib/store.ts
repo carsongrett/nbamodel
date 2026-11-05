@@ -148,6 +148,7 @@ class SupabaseStore implements Store {
         underOdds: num(row.under_odds),
         source: str(row.source),
         sourceTimestamp: str(row.source_timestamp),
+        units: num(row.units),
       })),
       rates: rates.map((row) => ({
         playerId: String(row.player_id),
@@ -221,6 +222,7 @@ class SupabaseStore implements Store {
         line: num(row.line),
         overOdds: num(row.over_odds),
         underOdds: num(row.under_odds),
+        units: num(row.units),
         savedAt: String(row.saved_at),
         sourcesUsed: Array.isArray(row.sources_used) ? row.sources_used as string[] : [],
       })),
@@ -282,9 +284,10 @@ class SupabaseStore implements Store {
       player_id: row.playerId, game_id: row.gameId, source: row.source, season: row.season,
       points: row.points, rebounds: row.rebounds, minutes: row.minutes, source_timestamp: row.sourceTimestamp,
     })), ["player_id", "game_id", "source"]);
-    await this.replace("prop_lines", db.lines.map((row) => ({
+    await this.replaceUnits("prop_lines", db.lines.map((row) => ({
       player_id: row.playerId, game_id: row.gameId, stat: row.stat, season: row.season, line: row.line,
       over_odds: row.overOdds, under_odds: row.underOdds, source: row.source, source_timestamp: row.sourceTimestamp,
+      units: row.units ?? null,
     })), ["player_id", "game_id", "stat"]);
     await this.replace("player_rates", db.rates.map((row: PlayerRate) => ({
       player_id: row.playerId, season: row.season, pts_per_100: row.ptsPer100, pts_per_100_games: row.ptsPer100Games,
@@ -323,10 +326,11 @@ class SupabaseStore implements Store {
     await this.replace("overrides", db.overrides.map((row: MinutesOverride) => ({
       player_id: row.playerId, game_id: row.gameId, minutes: row.minutes,
     })), ["player_id", "game_id"]);
-    await this.replace("pregame", db.pregame.filter((row) => !lockedKeys.has(`${row.playerId}|${row.gameId}`)).map((row) => ({
+    await this.replaceUnits("pregame", db.pregame.filter((row) => !lockedKeys.has(`${row.playerId}|${row.gameId}`)).map((row) => ({
       player_id: row.playerId, game_id: row.gameId, stat: row.stat, slate_date: row.slateDate,
       baseline: row.baseline, projection: row.projection, minutes: row.minutes, adjustments: row.adjustments,
       flags: row.flags, line: row.line, over_odds: row.overOdds, under_odds: row.underOdds,
+      units: row.units ?? null,
       saved_at: row.savedAt, sources_used: row.sourcesUsed,
     })), ["player_id", "game_id", "stat"], (row) => !lockedKeys.has(`${row.player_id}|${row.game_id}`));
     await this.replace("actuals", db.actuals.map((row: Actual) => ({
@@ -351,6 +355,25 @@ class SupabaseStore implements Store {
     if (rows.length === 0) return;
     const { error } = await this.client.from(table).upsert(rows);
     if (error) throw new Error(`${table}: ${error.message}`);
+  }
+
+  private async replaceUnits(
+    table: string,
+    rows: Record<string, unknown>[],
+    keys: string[],
+    canDelete?: (row: Record<string, unknown>) => boolean,
+  ): Promise<void> {
+    const hasUnits = rows.some((row) => row.units != null);
+    try {
+      await this.replace(table, rows, keys, canDelete);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (!message.includes("units")) throw error;
+      if (hasUnits) {
+        throw new Error("Bet units need a database column. Run supabase/migrations/20261105180000_bet_units.sql in the Supabase SQL editor, then save the bet again.");
+      }
+      await this.replace(table, rows.map(({ units: _units, ...row }) => row), keys, canDelete);
+    }
   }
 
   private async replace(

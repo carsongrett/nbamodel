@@ -50,6 +50,8 @@ button:disabled { opacity: 0.55; cursor: wait; }
 .summary div { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
 .summary span { display: block; color: var(--muted); font-size: 12px; }
 .summary strong { font-variant-numeric: tabular-nums; font-size: 22px; }
+.units-up { color: var(--good); }
+.units-down { color: var(--bad); }
 
 .line-distance { margin: 0 0 14px; }
 .line-distance h2 { margin: 0 0 4px; font-size: 16px; }
@@ -70,6 +72,8 @@ button:disabled { opacity: 0.55; cursor: wait; }
 .line-distance-row strong { font-variant-numeric: tabular-nums; font-size: 16px; }
 
 .board-note { margin: 0 0 8px; }
+.bet-players { margin: 0 0 14px; }
+.bet-players .table-wrap { margin-top: 8px; }
 .game-list { display: grid; gap: 10px; }
 .game {
   background: var(--card);
