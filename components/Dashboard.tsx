@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Settings, SlateGame, SlateView, Stat } from "../lib/engine";
 import { highestDeltas } from "../lib/highest-deltas";
+import { noteForPlayer, type LineupTeam } from "../lib/sources/rotowire-lineups";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
 import Trace from "./Trace";
@@ -127,6 +128,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   const [kind, setKind] = useState("projections");
   const [importText, setImportText] = useState("");
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [lineupTeams, setLineupTeams] = useState<LineupTeam[] | null>(null);
 
   useEffect(() => {
     if (window.location.hash === "#about") setAboutOpen(true);
@@ -184,6 +186,45 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
 
   function put(url: string, body: Record<string, unknown>, pending: string) {
     return post(url, body, pending, "PUT");
+  }
+
+  async function checkLineups() {
+    setBusy(true);
+    setStatus("Checking injuries and lineups…");
+    try {
+      const response = await fetch("/api/lineups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date }),
+      });
+      const text = await response.text();
+      let body: { ok?: boolean; error?: string; message?: string; teams?: LineupTeam[] };
+      try {
+        body = text ? JSON.parse(text) as { ok?: boolean; error?: string; message?: string; teams?: LineupTeam[] } : {};
+      } catch {
+        setLineupTeams(null);
+        setStatus(response.ok ? "Done." : `Request failed (${response.status}).`);
+        return;
+      }
+      if (!response.ok || body.ok === false || !body.teams) {
+        setLineupTeams(null);
+        setStatus(body.error || body.message || "Injury and lineup check failed.");
+        return;
+      }
+      setLineupTeams(body.teams);
+      const labeled = (slate?.rows ?? []).filter((row) => noteForPlayer(body.teams ?? [], row.teamId, row.playerName)).length;
+      const lead = body.message || "Injury and lineup notes loaded.";
+      setStatus(labeled
+        ? `${lead} ${labeled} ${labeled === 1 ? "player" : "players"} on the board labeled.`
+        : `${lead} No players on this board were mentioned.`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function lineupNote(teamId: string, playerName: string): string | null {
+    if (!lineupTeams) return null;
+    return noteForPlayer(lineupTeams, teamId, playerName);
   }
 
   const slate = payload?.slate;
@@ -258,6 +299,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
         </label>
         <button className="primary" type="button" disabled={busy} onClick={() => void post("/api/projections", {}, "Loading projections…")}>Projections</button>
         <button className="secondary" type="button" disabled={busy} onClick={() => void post("/api/consensus", {}, "Loading lines…")}>Lines</button>
+        <button className="secondary" type="button" disabled={busy} onClick={() => void checkLineups()}>Injury/lineup check</button>
         <button className="ghost" type="button" disabled={busy} onClick={() => void post("/api/research", {}, "Requesting research…")}>Research Slate</button>
       </div>
 
@@ -310,10 +352,14 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                   {rows.map((row) => {
                     const cell = row.stats[stat];
                     const key = `${row.playerId}|${row.gameId}`;
+                    const note = lineupNote(row.teamId, row.playerName);
                     return (
                       <tr key={key}>
                         <td>
-                          <div className="player">{row.playerName}</div>
+                          <div className="player">
+                            {row.playerName}
+                            {note ? <span className="lineup-note">{note}</span> : null}
+                          </div>
                           {cell.flags.filter((flag) => flag.includes("missing") && flag.includes("baseline")).map((flag) => (
                             <div className="meta" key={flag}>{flag}</div>
                           ))}
@@ -382,16 +428,24 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                   </tr>
                 </thead>
                 <tbody>
-                  {topDeltas.map((row) => (
-                    <tr key={`${row.playerId}|${row.gameId}`}>
-                      <td className="player">{row.playerName}</td>
-                      <td>{row.teamId}</td>
-                      <td>{row.opponentId}</td>
-                      <td className="num">{fmt(row.projection)}</td>
-                      <td className="num">{fmt(row.line, 1)}</td>
-                      <td className="num delta" style={deltaStyle(row.delta)}>{fmt(row.delta)}</td>
-                    </tr>
-                  ))}
+                  {topDeltas.map((row) => {
+                    const note = lineupNote(row.teamId, row.playerName);
+                    return (
+                      <tr key={`${row.playerId}|${row.gameId}`}>
+                        <td>
+                          <div className="player">
+                            {row.playerName}
+                            {note ? <span className="lineup-note">{note}</span> : null}
+                          </div>
+                        </td>
+                        <td>{row.teamId}</td>
+                        <td>{row.opponentId}</td>
+                        <td className="num">{fmt(row.projection)}</td>
+                        <td className="num">{fmt(row.line, 1)}</td>
+                        <td className="num delta" style={deltaStyle(row.delta)}>{fmt(row.delta)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
