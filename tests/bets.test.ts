@@ -178,6 +178,10 @@ test("the desk drops the opponent column and adds bet tracking", () => {
   assert.doesNotMatch(history, /<th>Opp<\/th>/);
   assert.match(todayBoard, /<th className="num">Bet<\/th>/);
   assert.match(todayBoard, /aria-label=\{`\$\{row\.playerName\} \$\{stat\} bet`\}/);
+  const betField = todayBoard.slice(todayBoard.indexOf("${stat} bet"));
+  const betInput = betField.slice(0, betField.indexOf("/>"));
+  assert.match(betInput, /disabled=\{busy\}/);
+  assert.doesNotMatch(betInput, /cell\.line/);
   assert.match(history, /<h2>Bet players<\/h2>/);
   assert.match(history, /<th className="num">Units<\/th>/);
   assert.match(nav, /href="\/bets"/);

@@ -413,7 +413,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                               aria-label={`${row.playerName} ${stat} bet`}
                               defaultValue={cell.units ?? ""}
                               key={`${key}|${stat}|bet|${cell.units ?? ""}`}
-                              disabled={busy || cell.line == null}
+                              disabled={busy}
                               onBlur={(event) => {
                                 const next = event.target.value.trim();
                                 const current = cell.units == null ? "" : String(cell.units);
