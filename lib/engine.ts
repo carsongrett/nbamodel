@@ -1,3 +1,4 @@
+import { normalizePersonName } from "./sources/names";
 import { canonicalTeam, matchupGameId } from "./sources/teams";
 
 export const CURRENT_SEASON = "2026-27";
@@ -2291,9 +2292,22 @@ export function buildSlate(db: Database, date: string): SlateView {
 
 const AVAILABILITY = new Set(["out", "questionable", "available", "minutes_restriction"]);
 
+type ResearchPlayer = { playerId: string; displayName: string; teamId: string };
+
+function playersNamed(roster: ResearchPlayer[], name: string): ResearchPlayer[] {
+  const key = normalizePersonName(name);
+  if (!key) return [];
+  const matches = new Map<string, ResearchPlayer>();
+  for (const player of roster) {
+    if (normalizePersonName(player.displayName) !== key) continue;
+    if (!matches.has(player.playerId)) matches.set(player.playerId, player);
+  }
+  return [...matches.values()];
+}
+
 export function normalizeFindings(
   payload: unknown,
-  ctx: { slateDate: string; retrievedAt: string; playerIds: Set<string>; teamIds: Set<string> },
+  ctx: { slateDate: string; retrievedAt: string; roster: ResearchPlayer[] },
 ): { findings: Finding[]; discarded: string[] } {
   const discarded: string[] = [];
   const list = Array.isArray(payload)
@@ -2320,17 +2334,23 @@ export function normalizeFindings(
       discarded.push("A finding about a different season was dropped.");
       continue;
     }
-    let playerId = typeof raw.player_id === "string" ? raw.player_id.trim() : "";
-    let teamId = typeof raw.team_id === "string" ? raw.team_id.trim() : "";
+    const playerName = typeof raw.player_name === "string" ? raw.player_name.trim() : "";
+    if (!playerName) {
+      discarded.push("A finding without a player name was dropped.");
+      continue;
+    }
+    const matches = playersNamed(ctx.roster, playerName);
+    if (matches.length !== 1) {
+      discarded.push(
+        matches.length === 0
+          ? `A finding for "${playerName}" matched nobody on the roster and was dropped.`
+          : `A finding for "${playerName}" matched more than one roster player and was dropped.`,
+      );
+      continue;
+    }
+    const playerId = matches[0].playerId;
+    const teamId = matches[0].teamId;
     const flags: string[] = [];
-    if (playerId && !ctx.playerIds.has(playerId)) {
-      flags.push("Returned player id was not on the slate and was not name-matched.");
-      playerId = "";
-    }
-    if (teamId && !ctx.teamIds.has(teamId)) {
-      flags.push("Returned team id was not on the slate and was not name-matched.");
-      teamId = "";
-    }
     let sourceUrl: string | null = null;
     if (typeof raw.source_url === "string" && /^https?:\/\//i.test(raw.source_url.trim())) {
       sourceUrl = raw.source_url.trim().slice(0, 500);
@@ -2355,8 +2375,8 @@ export function normalizeFindings(
     findings.push({
       id: crypto.randomUUID(),
       slateDate: ctx.slateDate,
-      playerId: playerId || null,
-      teamId: teamId || null,
+      playerId,
+      teamId,
       sourceUrl,
       publishedAt,
       retrievedAt: ctx.retrievedAt,

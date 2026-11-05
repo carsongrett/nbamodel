@@ -601,13 +601,20 @@ test("results distinguish push, no pick, DNP, and unresolved", () => {
   assert.equal(summary.winRate, 1);
 });
 
-test("research findings do not name-match and conflicting reports are flagged", () => {
+test("research notes match a roster name and drop a name that matches nobody", () => {
+  const roster = [
+    { playerId: "player_luka", displayName: "Luka Doncic", teamId: "DAL" },
+    { playerId: "player_luka", displayName: "Luka Doncic", teamId: "DAL" },
+    { playerId: "player_kyrie", displayName: "Kyrie Irving", teamId: "DAL" },
+    { playerId: "player_alex_a", displayName: "Alex Johnson", teamId: "BOS" },
+    { playerId: "player_alex_b", displayName: "Alex Johnson", teamId: "LAL" },
+  ];
   const { findings, discarded } = normalizeFindings(
     [
       {
-        player_id: "player_luka",
-        player_name: "Luka Doncic",
-        team_id: "DAL",
+        player_id: "guessed_wrong",
+        player_name: "Luka Dončić",
+        team_id: "LAL",
         source_url: "https://example.com/luka",
         published_at: "2026-11-01T12:00:00Z",
         summary: "Listed as probable.",
@@ -619,7 +626,7 @@ test("research findings do not name-match and conflicting reports are flagged", 
       {
         player_name: "Luka Doncic",
         source_url: "https://example.com/other-luka",
-        summary: "This other person is out.",
+        summary: "Ruled out with an ankle injury.",
         kind: "verified",
         availability: "out",
       },
@@ -631,21 +638,75 @@ test("research findings do not name-match and conflicting reports are flagged", 
         availability: "available",
         suggested_minutes: 36,
       },
-      { summary: "2024-25 recap of an old injury.", kind: "verified", source_url: "https://example.com/old" },
+      {
+        player_name: "Luka Doncic Jr.",
+        source_url: "https://example.com/jr",
+        summary: "A different Luka is questionable.",
+        kind: "verified",
+        availability: "questionable",
+      },
+      {
+        player_name: "Alex Johnson",
+        source_url: "https://example.com/alex",
+        summary: "Minutes are limited.",
+        kind: "verified",
+        availability: "minutes_restriction",
+      },
+      {
+        player_name: "Luka Doncic",
+        summary: "2024-25 recap of an old injury.",
+        kind: "verified",
+        source_url: "https://example.com/old",
+      },
+      {
+        player_name: "Luka Doncic",
+        summary: "Cap confirmed.",
+        kind: "verified",
+        source_url: "not a url",
+        availability: "minutes_restriction",
+        suggested_minutes: 24,
+        suggested_role: "capped",
+      },
     ],
-    { slateDate: "2026-11-01", retrievedAt: "2026-11-01T18:00:00.000Z", playerIds: new Set(["player_luka"]), teamIds: new Set(["DAL"]) },
+    { slateDate: "2026-11-01", retrievedAt: "2026-11-01T18:00:00.000Z", roster },
   );
   assert.equal(findings.length, 3);
-  assert.equal(discarded.length, 1);
-  const unnamed = findings.find((f) => f.summary.startsWith("This other"));
-  assert.equal(unnamed?.playerId, null);
+  assert.ok(findings.every((finding) => finding.playerId === "player_luka" && finding.teamId === "DAL"));
+  const probable = findings.find((finding) => finding.summary === "Listed as probable.");
+  assert.equal(probable?.kind, "verified");
+  assert.equal(probable?.sourceUrl, "https://example.com/luka");
+  assert.equal(probable?.publishedAt, "2026-11-01T12:00:00.000Z");
+  assert.equal(probable?.suggestedMinutes, 28);
+  assert.equal(probable?.appliedAt, null);
+  assert.equal(findings.some((finding) => finding.summary === "Expected to start."), false);
+  assert.equal(findings.some((finding) => finding.summary.includes("different Luka")), false);
+  assert.equal(findings.some((finding) => finding.summary === "Minutes are limited."), false);
+  assert.equal(findings.some((finding) => finding.summary.includes("2024-25")), false);
+  const unsourced = findings.find((finding) => finding.summary === "Cap confirmed.");
+  assert.equal(unsourced?.kind, "inference");
+  assert.equal(unsourced?.sourceUrl, null);
+  assert.equal(unsourced?.suggestedMinutes, 24);
+  assert.equal(unsourced?.suggestedRole, "capped");
+  assert.ok(unsourced?.flags.includes("Missing source URL."));
+  assert.ok(unsourced?.flags.includes("Verified was removed because there is no source URL."));
+  assert.ok(discarded.some((line) => line.includes("without a player name")));
+  assert.ok(discarded.some((line) => line.includes("Luka Doncic Jr.") && line.includes("matched nobody")));
+  assert.ok(discarded.some((line) => line.includes("Alex Johnson") && line.includes("more than one")));
+  assert.ok(discarded.some((line) => line.includes("different season")));
   const merged = markConflicts(findings);
-  const luka = merged.filter((f) => f.playerId === "player_luka");
-  assert.equal(luka.length, 2);
-  assert.ok(luka.every((f) => f.conflict));
+  assert.ok(merged.every((finding) => finding.conflict));
   const stored = mergeFindings([], merged);
-  const again = mergeFindings(stored, merged.map((f) => ({ ...f, id: "new" })));
+  const again = mergeFindings(stored, merged.map((finding) => ({ ...finding, id: "new" })));
   assert.equal(again.length, stored.length);
+});
+
+test("a research response that is not a list saves nothing", () => {
+  const { findings, discarded } = normalizeFindings(
+    { note: "nope" },
+    { slateDate: "2026-11-01", retrievedAt: "2026-11-01T18:00:00.000Z", roster: [] },
+  );
+  assert.equal(findings.length, 0);
+  assert.match(discarded[0], /not a list/);
 });
 
 test("minutes suggestions are overrides and do not rewrite a saved projection", () => {
