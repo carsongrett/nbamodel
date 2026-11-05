@@ -34,18 +34,28 @@ function shiftText(gap: number, strength: number): string {
 }
 
 const SETTING_FIELDS: { key: keyof Settings; label: string; min: number; max: number; step: number; example: (value: number) => string }[] = [
-  { key: "dvpPointsStrength", label: "DvP points", min: 1, max: 30, step: 0.5, example: (value) => `Defense is 1.00 points above average. ${shiftText(1, value)}` },
-  { key: "dvpReboundsStrength", label: "DvP rebounds", min: 1, max: 30, step: 0.5, example: (value) => `Defense is 1.00 rebounds above average. ${shiftText(1, value)}` },
-  { key: "pacePointsStrength", label: "Pace points", min: 1, max: 30, step: 0.5, example: (value) => `Opponent pace is 7.50 possessions above the league. ${shiftText(7.5, value)}` },
-  { key: "paceReboundsStrength", label: "Pace rebounds", min: 1, max: 30, step: 0.5, example: (value) => `Opponent pace is 7.50 possessions above the league. ${shiftText(7.5, value)}` },
-  { key: "recentPointsStrength", label: "Recent points", min: 1, max: 30, step: 0.5, example: (value) => `Last 15 is 3.00 points above the line. ${shiftText(3, value)}` },
-  { key: "recentReboundsStrength", label: "Recent rebounds", min: 1, max: 30, step: 0.5, example: (value) => `Last 15 is 1.00 rebound above SportsLine. ${shiftText(1, value)}` },
-  { key: "minutesPointsStrength", label: "Minutes points", min: 1, max: 30, step: 0.5, example: (value) => `The minutes share is 1.50 above the line. ${shiftText(1.5, value)}` },
-  { key: "minutesReboundsStrength", label: "Minutes rebounds", min: 1, max: 30, step: 0.5, example: (value) => `Rebounds per minute are 1.00 above SportsLine. ${shiftText(1, value)}` },
-  { key: "oppReboundsStrength", label: "Opponent rebounds", min: 1, max: 30, step: 0.5, example: (value) => `Opponent allows 1.00 more rebound than the league blend. ${shiftText(1, value)}` },
+  { key: "dvpPointsStrength", label: "DvP points", min: 1, max: 15, step: 0.5, example: (value) => `Defense is 1.00 points above average. ${shiftText(1, value)}` },
+  { key: "dvpReboundsStrength", label: "DvP rebounds", min: 1, max: 15, step: 0.5, example: (value) => `Defense is 1.00 rebounds above average. ${shiftText(1, value)}` },
+  { key: "pacePointsStrength", label: "Pace points", min: 1, max: 15, step: 0.5, example: (value) => `Opponent pace is 7.50 possessions above the league. ${shiftText(7.5, value)}` },
+  { key: "paceReboundsStrength", label: "Pace rebounds", min: 1, max: 15, step: 0.5, example: (value) => `Opponent pace is 7.50 possessions above the league. ${shiftText(7.5, value)}` },
+  { key: "recentPointsStrength", label: "Recent points", min: 1, max: 15, step: 0.5, example: (value) => `Last 15 is 3.00 points above the line. ${shiftText(3, value)}` },
+  { key: "recentReboundsStrength", label: "Recent rebounds", min: 1, max: 15, step: 0.5, example: (value) => `Last 15 is 1.00 rebound above SportsLine. ${shiftText(1, value)}` },
+  { key: "minutesPointsStrength", label: "Minutes points", min: 1, max: 15, step: 0.5, example: (value) => `The minutes share is 1.50 above the line. ${shiftText(1.5, value)}` },
+  { key: "minutesReboundsStrength", label: "Minutes rebounds", min: 1, max: 15, step: 0.5, example: (value) => `Rebounds per minute are 1.00 above SportsLine. ${shiftText(1, value)}` },
+  { key: "oppReboundsStrength", label: "Opponent rebounds", min: 1, max: 15, step: 0.5, example: (value) => `Opponent allows 1.00 more rebound than the league blend. ${shiftText(1, value)}` },
   { key: "minRecentGames", label: "Minimum recent games", min: 1, max: 15, step: 1, example: (value) => `This player has 4 recent games. At ${scaleText(value)}, last 15 ${value <= 4 ? "counts" : "is skipped"}.` },
-  { key: "minRateGames", label: "Minimum rate-sample games", min: 1, max: 30, step: 1, example: (value) => `This player has 10 games of usage. At ${scaleText(value)}, the rate ${value <= 10 ? "counts" : "is skipped"}.` },
+  { key: "minRateGames", label: "Minimum rate-sample games", min: 1, max: 15, step: 1, example: (value) => `This player has 10 games of usage. At ${scaleText(value)}, the rate ${value <= 10 ? "counts" : "is skipped"}.` },
 ];
+
+function settingsForSliders(settings: Settings): Settings {
+  const next = { ...settings };
+  for (const field of SETTING_FIELDS) {
+    // This slider already capped below 30. A higher saved count still extends its track.
+    if (field.key === "minRecentGames") continue;
+    if (next[field.key] > field.max) next[field.key] = field.max;
+  }
+  return next;
+}
 
 const KINDS = [
   "projections", "lines", "player_rates", "actuals", "players", "games", "teams",
@@ -147,7 +157,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       const body = (await response.json()) as Payload;
       if (cancel) return;
       setPayload(body);
-      if (body.slate) setSettings(body.slate.settings);
+      if (body.slate) setSettings(settingsForSliders(body.slate.settings));
       if (!response.ok) {
         setStatus(body.error || "The slate could not be loaded.");
         return;
@@ -179,7 +189,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       }
       if (payloadBody.slate) {
         setPayload(payloadBody);
-        setSettings(payloadBody.slate.settings);
+        setSettings(settingsForSliders(payloadBody.slate.settings));
       }
       const errors = payloadBody.messages?.filter((item) => item.level === "error") ?? [];
       const lead = payloadBody.error || payloadBody.message || (response.ok ? "Done." : "Request failed.");
@@ -475,7 +485,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
             <form className="settings" onSubmit={(event) => { event.preventDefault(); void put("/api/settings", { settings }, "Saving settings…"); }}>
               {SETTING_FIELDS.map((field) => {
                 const value = settings[field.key];
-                const max = Math.max(field.max, value);
+                const max = field.key === "minRecentGames" ? Math.max(field.max, value) : field.max;
                 return (
                   <label className="scale" key={field.key}>
                     <span className="scale-top"><b>{field.label}</b><b>{scaleText(value)}</b></span>
