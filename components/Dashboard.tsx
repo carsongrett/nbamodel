@@ -11,12 +11,6 @@ import Trace from "./Trace";
 type Payload = {
   ok?: boolean;
   error?: string;
-  storageMode?: "local" | "supabase";
-  storageMessage?: string;
-  researchState?: "ready" | "setup_needed";
-  researchMessage?: string;
-  bettingProsState?: "ready" | "setup_needed";
-  bettingProsMessage?: string;
   message?: string;
   messages?: { level: "error" | "info"; playerId: string | null; message: string }[];
   slate?: SlateView;
@@ -277,7 +271,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
           <p className="eyebrow">2026–27 season</p>
           <h1>Today</h1>
           <DeskNav current="today" />
-          <p className="sub">{slateLabel(initialDate)}. Projections loads ESPN, Basketball Reference, SportsLine, Dimers, FantasyPros, and TeamRankings. Lines loads BettingPros points and rebounds near tip-off and replaces a typed number until results are stored.</p>
+          <p className="sub">{slateLabel(initialDate)}.</p>
         </div>
         <div className="top-actions">
           <button className="about-open" type="button" aria-haspopup="dialog" aria-expanded={aboutOpen} onClick={() => setAboutOpen(true)}>?</button>
@@ -286,14 +280,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
           ) : null}
         </div>
       </header>
-
-      <div className="banner">
-        <strong>{payload?.storageMode === "supabase" ? "Supabase" : "Local storage"}.</strong> {payload?.storageMessage}
-        <br />
-        <strong>{payload?.researchState === "ready" ? "Research ready." : "Research setup needed."}</strong> {payload?.researchMessage}
-        <br />
-        <strong>{payload?.bettingProsState === "ready" ? "BettingPros key set." : "BettingPros setup needed."}</strong> {payload?.bettingProsMessage}
-      </div>
 
       <div className="row actions">
         <label>
@@ -331,9 +317,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
         ) : null}
       </section>
 
-      <p className="meta board-note">
-        Delta is the projection minus the line. Green is above the line and red is below it. {STATS.find((item) => item.id === stat)?.label}. A line from Lines or from this box is stored in History. A player with no line is left out. Lines replaces a typed number before the game. After results are stored, that saved line stays. Clear the box before then to remove that stat. Points plus rebounds is the two projections added together.
-      </p>
       <div className="game-list">
         {games.length === 0 ? (
           <p className="card empty-games">No players for this filter.</p>

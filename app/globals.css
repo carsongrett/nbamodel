@@ -28,9 +28,7 @@ h1, h2, h3 { font-weight: 600; letter-spacing: -0.02em; }
 h1 { margin: 0; font-size: 34px; line-height: 1; }
 .sub { margin: 8px 0 0; max-width: 640px; color: var(--muted); }
 
-.banner, .status, .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
-.banner { padding: 12px 14px; margin-bottom: 12px; color: var(--muted); }
-.banner strong { color: var(--ink); }
+.status, .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
 .actions { margin: 14px 0; }
 .status { min-height: 48px; padding: 12px 14px; margin-bottom: 14px; }
