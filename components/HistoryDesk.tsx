@@ -247,14 +247,14 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
             {groups.length === 0 ? (
               <p className="card empty-games">No players for this filter.</p>
             ) : groups.map(({ game, rows: gameRows, scoreLabel }) => (
-              <section className="game" key={game.gameId}>
-                <h2 className="game-head">
+              <details className="game" key={game.gameId}>
+                <summary className="game-head">
                   <span className="player">
                     {game.label}
                     {game.tipLabel ? <span className="game-time">{game.tipLabel}</span> : null}
                   </span>
                   {scoreLabel ? <span className="game-odds">{scoreLabel}</span> : null}
-                </h2>
+                </summary>
                 <div className="table-wrap game-table">
                   <table>
                     <thead>
@@ -277,7 +277,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                           <tr key={`${row.playerId}|${row.gameId}`}>
                             <td>
                               <div className="player">{row.playerName}</div>
-                              <div className="meta">{row.position} · {row.playerId}</div>
+                              <div className="meta">{row.position}</div>
                               {archived ? <Trace stat={cell} locked={row.locked} /> : null}
                             </td>
                             <td>{row.teamId}</td>
@@ -296,7 +296,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                     </tbody>
                   </table>
                 </div>
-              </section>
+              </details>
             ))}
           </div>
         </>

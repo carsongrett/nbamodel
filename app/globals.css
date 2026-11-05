@@ -103,6 +103,8 @@ button:disabled { opacity: 0.55; cursor: wait; }
   align-items: baseline;
   padding: 12px 14px;
   font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 .empty-games { margin: 0; padding: 14px 16px; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
