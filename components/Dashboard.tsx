@@ -154,7 +154,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   useEffect(() => {
     let cancel = false;
     void (async () => {
-      const response = await fetch(`/api/slate?date=${initialDate}`);
+      const response = await fetch(`/api/slate?date=${initialDate}`, { cache: "no-store" });
       const body = (await response.json()) as Payload;
       if (cancel) return;
       setPayload(body);
