@@ -1,4 +1,4 @@
-import type { Grade, SlateGame, Stat } from "./engine";
+import { CURRENT_SEASON, gradeResult, idsEqual, STATS, type Actual, type Database, type Grade, type SlateGame, type Stat } from "./engine";
 
 export type HistoryResultFilter = "all" | "win" | "loss";
 
@@ -178,6 +178,101 @@ export function historySummary(cells: readonly SummaryCell[]): HistorySummary {
     meanAbsoluteError: errorCount === 0 ? null : errorTotal / errorCount,
     vegasMeanAbsoluteError: vegasCount === 0 ? null : vegasTotal / vegasCount,
   };
+}
+
+export type HistoryAbsError = {
+  meanAbsoluteError: number | null;
+  vegasMeanAbsoluteError: number | null;
+};
+
+export type HistoryErrorWindows = {
+  last15: HistoryAbsError;
+  allTime: HistoryAbsError;
+};
+
+export type HistoryErrorRow = {
+  date: string;
+  stat: Stat;
+  source: "saved";
+  grade: Grade;
+  projection: number | null;
+  line: number | null;
+  actual: number | null;
+  error: number | null;
+};
+
+function shiftIsoDate(iso: string, days: number): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function absError(cells: readonly SummaryCell[]): HistoryAbsError {
+  const summary = historySummary(cells);
+  return {
+    meanAbsoluteError: summary.meanAbsoluteError,
+    vegasMeanAbsoluteError: summary.vegasMeanAbsoluteError,
+  };
+}
+
+/**
+ * Last 15 days ends on endDate and includes that date. All time uses every date.
+ * The stat is the History stat filter. Both windows use historySummary, so a row
+ * counts only when the slate abs error already counts it.
+ */
+export function historyErrorWindows(rows: readonly HistoryErrorRow[], stat: Stat, endDate: string): HistoryErrorWindows {
+  const start = shiftIsoDate(endDate, -14);
+  const matching = rows.filter((row) => row.stat === stat);
+  const last15 = matching.filter((row) => row.date >= start && row.date <= endDate);
+  return {
+    last15: absError(last15),
+    allTime: absError(matching),
+  };
+}
+
+export function historyErrorWindowsByStat(rows: readonly HistoryErrorRow[], endDate: string): Record<Stat, HistoryErrorWindows> {
+  const windows = {} as Record<Stat, HistoryErrorWindows>;
+  for (const stat of STATS) windows[stat] = historyErrorWindows(rows, stat, endDate);
+  return windows;
+}
+
+function actualNumber(actual: Actual | null, stat: Stat): number | null {
+  if (!actual || actual.dnp) return null;
+  if (stat === "points") return actual.points;
+  if (stat === "rebounds") return actual.rebounds;
+  if (actual.points == null || actual.rebounds == null) return null;
+  return actual.points + actual.rebounds;
+}
+
+/**
+ * Saved stats across dates. History stores a stat when it has a line.
+ * The grade and error match the slate, so DNP and a game that is not final stay out of the average.
+ */
+export function historyErrorRows(db: Database): HistoryErrorRow[] {
+  return db.pregame.flatMap((row) => {
+    const game = db.games.find((item) => idsEqual(item.gameId, row.gameId));
+    if (!game || game.season !== CURRENT_SEASON || !/^\d{4}-\d{2}-\d{2}$/.test(game.gameDate)) return [];
+    const actual = db.actuals.find((item) => idsEqual(item.playerId, row.playerId) && idsEqual(item.gameId, row.gameId)) ?? null;
+    const actualValue = actualNumber(actual, row.stat);
+    const graded = gradeResult({
+      projection: row.projection,
+      line: row.line,
+      actual: actualValue,
+      dnp: actual?.dnp ?? false,
+      gameFinal: game.status === "final",
+    });
+    return [{
+      date: game.gameDate,
+      stat: row.stat,
+      source: "saved" as const,
+      grade: graded.grade,
+      projection: row.projection,
+      line: row.line,
+      actual: actualValue,
+      error: graded.error,
+    }];
+  });
 }
 
 export type HistoryGame = SlateGame & {

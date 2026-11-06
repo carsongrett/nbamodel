@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { CURRENT_SEASON, buildSlate, emptyDatabase, summarize, type Stat } from "../lib/engine";
+import { CURRENT_SEASON, buildSlate, emptyDatabase, summarize, type Actual, type Database, type Game, type PregameStat, type Stat } from "../lib/engine";
 import {
   HISTORY_RESULT_OPTIONS,
   applyHistoryFilters,
   groupHistoryByGame,
+  historyErrorRows,
+  historyErrorWindows,
   historyResultFilter,
   historyResultText,
   historyScoreLabel,
@@ -304,12 +306,199 @@ test("vegas abs error averages |line - actual| on the saved rows in the model er
   assert.equal(summary.vegasMeanAbsoluteError, vegas.reduce((sum, error) => sum + error, 0) / vegas.length);
 });
 
-test("History labels model and vegas abs error from the saved stat on the slate", () => {
+test("History labels slate, last 15 days, and all time abs error for the model and Vegas", () => {
   const source = readFileSync(new URL("../components/HistoryDesk.tsx", import.meta.url), "utf8");
+  const route = readFileSync(new URL("../app/api/history/route.ts", import.meta.url), "utf8");
   assert.match(source, /historySummary\(\(slate\?\.rows \?\? \[\]\)\.map\(\(row\) => row\.stats\[stat\]\)\)/);
-  assert.match(source, /<span>Model abs error<\/span><strong>\{fmt\(summary\.meanAbsoluteError, 2\)\}<\/strong>/);
-  assert.match(source, /<span>Vegas abs error<\/span><strong>\{fmt\(summary\.vegasMeanAbsoluteError, 2\)\}<\/strong>/);
+  assert.match(source, /<span>Wins<\/span><strong>\{summary\.wins\}<\/strong>/);
+  assert.match(source, /<span>Losses<\/span><strong>\{summary\.losses\}<\/strong>/);
+  assert.match(source, /<span>Win rate<\/span><strong>\{pct\(summary\.winRate\)\}<\/strong>/);
+  assert.match(source, /<span>Pushes<\/span><strong>\{summary\.pushes\}<\/strong>/);
+  assert.match(source, /fetch\(`\/api\/history\?date=\$\{date\}`\)/);
+  assert.match(source, /const last15 = shownWindows\?\.\[stat\]\?\.last15/);
+  assert.match(source, /const allTimeErrors = shownWindows\?\.\[stat\]\?\.allTime/);
+  assert.match(source, /<span>Model abs error, slate<\/span><strong>\{fmt\(summary\.meanAbsoluteError, 2\)\}<\/strong>/);
+  assert.match(source, /<span>Vegas abs error, slate<\/span><strong>\{fmt\(summary\.vegasMeanAbsoluteError, 2\)\}<\/strong>/);
+  assert.match(source, /<span>Model abs error, last 15 days<\/span><strong>\{fmt\(last15\?\.meanAbsoluteError, 2\)\}<\/strong>/);
+  assert.match(source, /<span>Vegas abs error, last 15 days<\/span><strong>\{fmt\(last15\?\.vegasMeanAbsoluteError, 2\)\}<\/strong>/);
+  assert.match(source, /<span>Model abs error, all time<\/span><strong>\{fmt\(allTimeErrors\?\.meanAbsoluteError, 2\)\}<\/strong>/);
+  assert.match(source, /<span>Vegas abs error, all time<\/span><strong>\{fmt\(allTimeErrors\?\.vegasMeanAbsoluteError, 2\)\}<\/strong>/);
   assert.doesNotMatch(source, /Mean abs\. error/);
+  assert.match(route, /historyErrorRows\(db\)/);
+  assert.match(route, /historyErrorWindowsByStat\(/);
+  assert.match(route, /Date must be YYYY-MM-DD/);
+  const today = readFileSync(new URL("../components/Dashboard.tsx", import.meta.url), "utf8");
+  const bets = readFileSync(new URL("../components/BetDesk.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(today, /abs error/);
+  assert.doesNotMatch(bets, /abs error/);
+});
+
+function day(iso: string, delta: number): string {
+  const [year, month, date] = iso.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, date + delta));
+  return shifted.toISOString().slice(0, 10);
+}
+
+function savedStat(input: {
+  playerId: string;
+  gameId: string;
+  stat: Stat;
+  date: string;
+  projection: number | null;
+  line: number | null;
+}): PregameStat {
+  return {
+    playerId: input.playerId,
+    gameId: input.gameId,
+    stat: input.stat,
+    slateDate: input.date,
+    baseline: input.projection,
+    projection: input.projection,
+    minutes: 30,
+    adjustments: [],
+    flags: [],
+    line: input.line,
+    overOdds: -110,
+    underOdds: -110,
+    savedAt: `${input.date}T15:00:00.000Z`,
+    sourcesUsed: ["sportsline"],
+  };
+}
+
+test("abs error windows use the slate rows, then last 15 days and all time for that stat", () => {
+  const end = "2026-11-05";
+  const inside = day(end, -14);
+  const outside = day(end, -15);
+  const after = day(end, 1);
+  assert.equal(inside, "2026-10-22");
+  assert.equal(outside, "2026-10-21");
+  assert.equal(after, "2026-11-06");
+
+  const finalGame = (date: string): Game => ({
+    gameId: `${date}|BOS@NYK`,
+    season: CURRENT_SEASON,
+    gameDate: date,
+    homeTeamId: "NYK",
+    awayTeamId: "BOS",
+    status: "final",
+  });
+  const openGame: Game = {
+    gameId: `${end}|MIL@MIA`,
+    season: CURRENT_SEASON,
+    gameDate: end,
+    homeTeamId: "MIA",
+    awayTeamId: "MIL",
+    status: "scheduled",
+  };
+  const actual = (playerId: string, gameId: string, points: number | null, rebounds: number | null, dnp = false): Actual => ({
+    playerId,
+    gameId,
+    season: CURRENT_SEASON,
+    dnp,
+    points,
+    rebounds,
+    sourceTimestamp: end,
+  });
+  const counted = {
+    playerId: "player_count",
+    projection: 22,
+    line: 19.5,
+    points: 27,
+    rebounds: 8,
+  };
+  const noLine = { playerId: "player_noline", projection: 11, line: null, points: 13, rebounds: 4 };
+  const noPick = { playerId: "player_nopick", projection: 12, line: 12, points: 14, rebounds: 5 };
+  const earlier = { playerId: "player_earlier", projection: 10, line: 12, points: 11, rebounds: 3 };
+  const older = { playerId: "player_older", projection: 30, line: 20, points: 10, rebounds: 6 };
+  const later = { playerId: "player_later", projection: 8, line: 9, points: 8, rebounds: 2 };
+  const db: Database = {
+    ...emptyDatabase(),
+    teams: [
+      { teamId: "BOS", name: "Boston" },
+      { teamId: "NYK", name: "New York" },
+      { teamId: "MIL", name: "Milwaukee" },
+      { teamId: "MIA", name: "Miami" },
+    ],
+    players: [
+      { playerId: counted.playerId, displayName: "Counted", teamId: "BOS", position: "SF", season: CURRENT_SEASON },
+      { playerId: noLine.playerId, displayName: "No Line", teamId: "BOS", position: "SF", season: CURRENT_SEASON },
+      { playerId: noPick.playerId, displayName: "No Pick", teamId: "BOS", position: "SF", season: CURRENT_SEASON },
+      { playerId: "player_dnp", displayName: "Did Not Play", teamId: "BOS", position: "SF", season: CURRENT_SEASON },
+      { playerId: "player_missing", displayName: "No Actual", teamId: "BOS", position: "SF", season: CURRENT_SEASON },
+      { playerId: earlier.playerId, displayName: "Earlier", teamId: "BOS", position: "SF", season: CURRENT_SEASON },
+      { playerId: older.playerId, displayName: "Older", teamId: "BOS", position: "SF", season: CURRENT_SEASON },
+      { playerId: later.playerId, displayName: "Later", teamId: "BOS", position: "SF", season: CURRENT_SEASON },
+      { playerId: "player_open", displayName: "Open", teamId: "MIL", position: "SF", season: CURRENT_SEASON },
+    ],
+    games: [finalGame(end), openGame, finalGame(inside), finalGame(outside), finalGame(after)],
+    pregame: [
+      savedStat({ playerId: counted.playerId, gameId: finalGame(end).gameId, stat: "points", date: end, projection: counted.projection, line: counted.line }),
+      savedStat({ playerId: counted.playerId, gameId: finalGame(end).gameId, stat: "rebounds", date: end, projection: 6, line: 7 }),
+      savedStat({ playerId: counted.playerId, gameId: finalGame(end).gameId, stat: "points_rebounds", date: end, projection: 28, line: 26 }),
+      savedStat({ playerId: noLine.playerId, gameId: finalGame(end).gameId, stat: "points", date: end, projection: noLine.projection, line: noLine.line }),
+      savedStat({ playerId: noPick.playerId, gameId: finalGame(end).gameId, stat: "points", date: end, projection: noPick.projection, line: noPick.line }),
+      savedStat({ playerId: "player_dnp", gameId: finalGame(end).gameId, stat: "points", date: end, projection: 15, line: 14 }),
+      savedStat({ playerId: "player_missing", gameId: finalGame(end).gameId, stat: "points", date: end, projection: 18, line: 16 }),
+      savedStat({ playerId: earlier.playerId, gameId: finalGame(inside).gameId, stat: "points", date: inside, projection: earlier.projection, line: earlier.line }),
+      savedStat({ playerId: older.playerId, gameId: finalGame(outside).gameId, stat: "points", date: outside, projection: older.projection, line: older.line }),
+      savedStat({ playerId: later.playerId, gameId: finalGame(after).gameId, stat: "points", date: after, projection: later.projection, line: later.line }),
+      savedStat({ playerId: "player_open", gameId: openGame.gameId, stat: "points", date: end, projection: 30, line: 28 }),
+    ],
+    actuals: [
+      actual(counted.playerId, finalGame(end).gameId, counted.points, counted.rebounds),
+      actual(noLine.playerId, finalGame(end).gameId, noLine.points, noLine.rebounds),
+      actual(noPick.playerId, finalGame(end).gameId, noPick.points, noPick.rebounds),
+      actual("player_dnp", finalGame(end).gameId, null, null, true),
+      actual(earlier.playerId, finalGame(inside).gameId, earlier.points, earlier.rebounds),
+      actual(older.playerId, finalGame(outside).gameId, older.points, older.rebounds),
+      actual(later.playerId, finalGame(after).gameId, later.points, later.rebounds),
+    ],
+  };
+
+  const rows = historyErrorRows(db);
+  const points = historyErrorWindows(rows, "points", end);
+  const slateCells = rows.filter((row) => row.stat === "points" && row.date === end);
+  const slateSummary = historySummary(slateCells);
+  const slateModel = [Math.abs(counted.projection - counted.points), Math.abs(noPick.projection - noPick.points)];
+  const slateVegas = [Math.abs(counted.line - counted.points), Math.abs(noPick.line - noPick.points)];
+  assert.equal(slateSummary.meanAbsoluteError, slateModel.reduce((sum, error) => sum + error, 0) / slateModel.length);
+  assert.equal(slateSummary.vegasMeanAbsoluteError, slateVegas.reduce((sum, error) => sum + error, 0) / slateVegas.length);
+  assert.equal(slateSummary.wins, 1);
+
+  const board = buildSlate(db, end);
+  const onSlate = historySummary(board.rows.map((row) => row.stats.points));
+  assert.equal(onSlate.meanAbsoluteError, slateSummary.meanAbsoluteError);
+  assert.equal(onSlate.vegasMeanAbsoluteError, slateSummary.vegasMeanAbsoluteError);
+  assert.equal(onSlate.wins, slateSummary.wins);
+  assert.equal(onSlate.losses, slateSummary.losses);
+  assert.equal(onSlate.pushes, slateSummary.pushes);
+
+  const last15Model = [...slateModel, Math.abs(earlier.projection - earlier.points)];
+  const last15Vegas = [...slateVegas, Math.abs(earlier.line - earlier.points)];
+  assert.equal(points.last15.meanAbsoluteError, last15Model.reduce((sum, error) => sum + error, 0) / last15Model.length);
+  assert.equal(points.last15.vegasMeanAbsoluteError, last15Vegas.reduce((sum, error) => sum + error, 0) / last15Vegas.length);
+
+  const allModel = [...last15Model, Math.abs(older.projection - older.points), Math.abs(later.projection - later.points)];
+  const allVegas = [...last15Vegas, Math.abs(older.line - older.points), Math.abs(later.line - later.points)];
+  assert.equal(points.allTime.meanAbsoluteError, allModel.reduce((sum, error) => sum + error, 0) / allModel.length);
+  assert.equal(points.allTime.vegasMeanAbsoluteError, allVegas.reduce((sum, error) => sum + error, 0) / allVegas.length);
+
+  const rebounds = historyErrorWindows(rows, "rebounds", end);
+  assert.equal(rebounds.last15.meanAbsoluteError, Math.abs(6 - counted.rebounds));
+  assert.equal(rebounds.last15.vegasMeanAbsoluteError, Math.abs(7 - counted.rebounds));
+  assert.equal(rebounds.allTime.meanAbsoluteError, rebounds.last15.meanAbsoluteError);
+  assert.equal(rebounds.allTime.vegasMeanAbsoluteError, rebounds.last15.vegasMeanAbsoluteError);
+
+  const combined = historyErrorWindows(rows, "points_rebounds", end);
+  const combinedActual = counted.points + counted.rebounds;
+  assert.equal(combined.last15.meanAbsoluteError, Math.abs(28 - combinedActual));
+  assert.equal(combined.allTime.vegasMeanAbsoluteError, Math.abs(26 - combinedActual));
+
+  const quiet = historyErrorWindows([], "points", end);
+  assert.equal(quiet.last15.meanAbsoluteError, null);
+  assert.equal(quiet.last15.vegasMeanAbsoluteError, null);
+  assert.equal(quiet.allTime.meanAbsoluteError, null);
+  assert.equal(quiet.allTime.vegasMeanAbsoluteError, null);
 });
 
 function game(partial: Partial<HistoryGame> & Pick<HistoryGame, "gameId" | "label">): HistoryGame {
