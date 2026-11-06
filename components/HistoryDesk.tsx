@@ -9,6 +9,7 @@ import {
   historyResultFilter,
   historyResultText,
   historySummary,
+  type HistoryErrorWindows,
   type HistoryResultFilter,
 } from "../lib/history";
 import { betPlayers, formatStake } from "../lib/bets";
@@ -21,6 +22,11 @@ type Payload = {
   error?: string;
   slate?: SlateView;
 };
+
+type ErrorWindowsPayload = {
+  ok?: boolean;
+  error?: string;
+} & Partial<Record<Stat, HistoryErrorWindows>>;
 
 const STATS: { id: Stat; label: string }[] = [
   { id: "points", label: "Points" },
@@ -73,6 +79,8 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
   const [teamId, setTeamId] = useState("");
   const [result, setResult] = useState<HistoryResultFilter>("all");
   const [payload, setPayload] = useState<Payload | null>(null);
+  const [windows, setWindows] = useState<Partial<Record<Stat, HistoryErrorWindows>> | null>(null);
+  const [windowsDate, setWindowsDate] = useState("");
   const [status, setStatus] = useState("Loading earlier slates.");
   const [aboutOpen, setAboutOpen] = useState(false);
   const [ready, setReady] = useState(false);
@@ -118,6 +126,35 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
     };
   }, [date]);
 
+  useEffect(() => {
+    if (!date) return;
+    let cancel = false;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/history?date=${date}`);
+        const body = (await response.json()) as ErrorWindowsPayload;
+        if (cancel) return;
+        const stats: Stat[] = ["points", "rebounds", "points_rebounds"];
+        const complete = stats.every((item) => body[item]?.last15 && body[item]?.allTime);
+        if (!response.ok || body.ok === false || !complete) {
+          setWindows(null);
+          setWindowsDate(date);
+          return;
+        }
+        setWindows(body);
+        setWindowsDate(date);
+      } catch {
+        if (!cancel) {
+          setWindows(null);
+          setWindowsDate(date);
+        }
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [date]);
+
   const slate = payload?.slate;
   const view = useMemo(
     () => applyHistoryFilters(slate?.rows ?? [], { gameId, teamId, stat, result }),
@@ -128,6 +165,9 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
     () => historySummary((slate?.rows ?? []).map((row) => row.stats[stat])),
     [slate, stat],
   );
+  const shownWindows = windowsDate === date ? windows : null;
+  const last15 = shownWindows?.[stat]?.last15;
+  const allTimeErrors = shownWindows?.[stat]?.allTime;
   const gameOptions = useMemo(() => {
     const savedIds = new Set(
       (slate?.rows ?? [])
@@ -220,14 +260,22 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
           </section>
 
           {slate ? (
-            <div className="summary">
-              <div><span>Wins</span><strong>{summary.wins}</strong></div>
-              <div><span>Losses</span><strong>{summary.losses}</strong></div>
-              <div><span>Win rate</span><strong>{pct(summary.winRate)}</strong></div>
-              <div><span>Pushes</span><strong>{summary.pushes}</strong></div>
-              <div><span>Model abs error</span><strong>{fmt(summary.meanAbsoluteError, 2)}</strong></div>
-              <div><span>Vegas abs error</span><strong>{fmt(summary.vegasMeanAbsoluteError, 2)}</strong></div>
-            </div>
+            <>
+              <div className="summary">
+                <div><span>Wins</span><strong>{summary.wins}</strong></div>
+                <div><span>Losses</span><strong>{summary.losses}</strong></div>
+                <div><span>Win rate</span><strong>{pct(summary.winRate)}</strong></div>
+                <div><span>Pushes</span><strong>{summary.pushes}</strong></div>
+              </div>
+              <div className="summary" aria-label="Absolute error">
+                <div><span>Model abs error, slate</span><strong>{fmt(summary.meanAbsoluteError, 2)}</strong></div>
+                <div><span>Vegas abs error, slate</span><strong>{fmt(summary.vegasMeanAbsoluteError, 2)}</strong></div>
+                <div><span>Model abs error, last 15 days</span><strong>{fmt(last15?.meanAbsoluteError, 2)}</strong></div>
+                <div><span>Vegas abs error, last 15 days</span><strong>{fmt(last15?.vegasMeanAbsoluteError, 2)}</strong></div>
+                <div><span>Model abs error, all time</span><strong>{fmt(allTimeErrors?.meanAbsoluteError, 2)}</strong></div>
+                <div><span>Vegas abs error, all time</span><strong>{fmt(allTimeErrors?.vegasMeanAbsoluteError, 2)}</strong></div>
+              </div>
+            </>
           ) : null}
 
           {slate ? (
