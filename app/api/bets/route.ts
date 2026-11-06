@@ -1,4 +1,4 @@
-import { betsFromDatabase, betWindowTotals } from "../../../lib/bets";
+import { betTracking } from "../../../lib/bets";
 import { setBetUnits, chicagoToday, type Stat } from "../../../lib/engine";
 import { fail, readJson, respond, slatePayload, todayOr } from "../../../lib/http";
 import { updateDatabase } from "../../../lib/store";
@@ -11,7 +11,7 @@ export async function GET() {
   return respond(async () => {
     const today = chicagoToday();
     return updateDatabase(async (db) => ({
-      result: { ok: true as const, ...betWindowTotals(betsFromDatabase(db), today) },
+      result: { ok: true as const, ...betTracking(db, today) },
     }));
   });
 }

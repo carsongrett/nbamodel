@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { betPlayers, betProfit, betsFromDatabase, betWindowTotals, formatStake, formatUnits } from "../lib/bets.ts";
+import { betLists, betPlayers, betProfit, betsFromDatabase, betTracking, betWindowRecords, betWindowTotals, formatRecord, formatStake, formatUnits } from "../lib/bets.ts";
 import { applyModelRun, buildSlate, CURRENT_SEASON, emptyDatabase, importRecords, setBetUnits, setPropLine, type Player } from "../lib/engine.ts";
 import { applyBettingProsProbe } from "../lib/sources/apply-bettingpros.ts";
 import type { ProbeResult } from "../lib/sources/bettingpros.ts";
@@ -49,6 +49,84 @@ test("windows are units up or down and leave out unsettled bets", () => {
   assert.equal(formatUnits(-1.5), "−1.5");
   assert.equal(formatUnits(0), "0");
   assert.equal(formatStake(1.5), "1.5");
+  const records = betWindowRecords([
+    { slateDate: today, units: 2, grade: "win" },
+    { slateDate: today, units: 5, grade: "push" },
+    { slateDate: today, units: 9, grade: "unresolved" },
+    { slateDate: today, units: 8, grade: "dnp" },
+    { slateDate: day(today, -6), units: 1, grade: "loss" },
+    { slateDate: day(today, -7), units: 1, grade: "loss" },
+    { slateDate: day(today, -40), units: 4, grade: "win" },
+  ], today);
+  assert.deepEqual(records.today, { wins: 1, losses: 0 });
+  assert.deepEqual(records.last7, { wins: 1, losses: 1 });
+  assert.deepEqual(records.last30, { wins: 1, losses: 2 });
+  assert.deepEqual(records.allTime, { wins: 2, losses: 2 });
+  assert.equal(formatRecord(2, 1), "2–1");
+  assert.equal(totals.today, 2);
+});
+
+test("settled bets list the player and result, and pending bets stay separate", () => {
+  const lists = betLists([
+    { slateDate: today, units: 2, grade: "win", playerName: "Devin Booker" },
+    { slateDate: day(today, -1), units: 1, grade: "loss", playerName: "Kevin Durant" },
+    { slateDate: today, units: 3, grade: "push", playerName: "Bam Adebayo" },
+    { slateDate: today, units: 4, grade: "unresolved", playerName: "Jalen Brunson" },
+    { slateDate: today, units: 5, grade: "dnp", playerName: "Out Player" },
+  ]);
+  assert.deepEqual(lists.settled, [
+    { playerName: "Bam Adebayo", units: 3, result: "Push" },
+    { playerName: "Devin Booker", units: 2, result: "Win" },
+    { playerName: "Kevin Durant", units: 1, result: "Loss" },
+  ]);
+  assert.deepEqual(lists.pending, [{ playerName: "Jalen Brunson", units: 4 }]);
+});
+
+test("a bet with no actual is pending and is left out of the units", () => {
+  const db = emptyDatabase();
+  db.players = [
+    { playerId: "book", displayName: "Devin Booker", teamId: "PHX", position: "SG", season: CURRENT_SEASON },
+    { playerId: "kd", displayName: "Kevin Durant", teamId: "PHX", position: "SF", season: CURRENT_SEASON },
+  ];
+  db.games = [
+    { gameId: "final", season: CURRENT_SEASON, gameDate: today, homeTeamId: "PHX", awayTeamId: "ORL", status: "final" },
+    { gameId: "later", season: CURRENT_SEASON, gameDate: today, homeTeamId: "PHX", awayTeamId: "LAL", status: "scheduled" },
+  ];
+  const saved = (playerId: string, gameId: string, projection: number, line: number, units: number) => ({
+    playerId,
+    gameId,
+    stat: "points" as const,
+    slateDate: today,
+    baseline: projection,
+    projection,
+    minutes: 34,
+    adjustments: [],
+    flags: [],
+    line,
+    overOdds: null,
+    underOdds: null,
+    units,
+    savedAt: retrievedAt,
+    sourcesUsed: ["sportsline"],
+  });
+  db.pregame = [saved("book", "final", 28, 24.5, 2), saved("kd", "later", 27, 25.5, 1.5)];
+  db.actuals = [{
+    playerId: "book",
+    gameId: "final",
+    season: CURRENT_SEASON,
+    dnp: false,
+    points: 30,
+    rebounds: 4,
+    sourceTimestamp: retrievedAt,
+  }];
+  const view = betTracking(db, today);
+  assert.equal(view.today, 2);
+  assert.equal(view.last7, 2);
+  assert.equal(view.allTime, 2);
+  assert.deepEqual(view.records.today, { wins: 1, losses: 0 });
+  assert.equal(formatRecord(view.records.allTime.wins, view.records.allTime.losses), "1–0");
+  assert.deepEqual(view.settled, [{ playerName: "Devin Booker", units: 2, result: "Win" }]);
+  assert.deepEqual(view.pending, [{ playerName: "Kevin Durant", units: 1.5 }]);
 });
 
 function desk(): { db: ReturnType<typeof emptyDatabase>; player: Player; gameId: string } {
@@ -189,5 +267,10 @@ test("the desk drops the opponent column and adds bet tracking", () => {
   assert.match(bets, /Last 7 days/);
   assert.match(bets, /Last 30 days/);
   assert.match(bets, /All time/);
+  assert.match(bets, /className="bet-record"/);
+  assert.match(bets, /aria-label="Settled bets"/);
+  assert.match(bets, /aria-label="Pending bets"/);
+  assert.match(bets, /<th>Player<\/th>/);
+  assert.match(bets, /<th className="num">Units<\/th>/);
   assert.doesNotMatch(bets, /<svg|chart/i);
 });

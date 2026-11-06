@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatUnits, type BetWindows } from "../lib/bets";
+import { formatRecord, formatStake, formatUnits, type BetTracking, type BetWindows } from "../lib/bets";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
 
@@ -12,8 +12,15 @@ const WINDOWS: { key: keyof BetWindows; label: string }[] = [
   { key: "allTime", label: "All time" },
 ];
 
+function isTracking(body: Partial<BetTracking> & { ok?: boolean }): body is BetTracking {
+  return body.today != null && body.last7 != null && body.last30 != null && body.allTime != null
+    && body.records != null
+    && Array.isArray(body.settled)
+    && Array.isArray(body.pending);
+}
+
 export default function BetDesk({ authConfigured }: { authConfigured: boolean }) {
-  const [totals, setTotals] = useState<BetWindows | null>(null);
+  const [totals, setTotals] = useState<BetTracking | null>(null);
   const [error, setError] = useState("");
   const [aboutOpen, setAboutOpen] = useState(false);
 
@@ -22,19 +29,19 @@ export default function BetDesk({ authConfigured }: { authConfigured: boolean })
     void (async () => {
       const response = await fetch("/api/bets");
       const text = await response.text();
-      let body: Partial<BetWindows> & { ok?: boolean; error?: string } = {};
+      let body: Partial<BetTracking> & { ok?: boolean; error?: string } = {};
       try {
-        body = text ? JSON.parse(text) as Partial<BetWindows> & { ok?: boolean; error?: string } : {};
+        body = text ? JSON.parse(text) as Partial<BetTracking> & { ok?: boolean; error?: string } : {};
       } catch {
         if (!cancel) setError(response.ok ? "Bets could not be loaded." : `Request failed (${response.status}).`);
         return;
       }
       if (cancel) return;
-      if (!response.ok || body.ok === false || body.today == null || body.last7 == null || body.last30 == null || body.allTime == null) {
+      if (!response.ok || body.ok === false || !isTracking(body)) {
         setError(body.error || "Bets could not be loaded.");
         return;
       }
-      setTotals({ today: body.today, last7: body.last7, last30: body.last30, allTime: body.allTime });
+      setTotals(body);
     })();
     return () => {
       cancel = true;
@@ -59,14 +66,66 @@ export default function BetDesk({ authConfigured }: { authConfigured: boolean })
       <section className="summary" aria-label="Bet tracking">
         {WINDOWS.map((item) => {
           const value = totals ? totals[item.key] : null;
-          const direction = value == null ? "" : value > 0 ? " units-up" : value < 0 ? " units-down" : "";
+          const record = totals?.records[item.key];
+          const direction = value == null ? "" : value > 0 ? "units-up" : value < 0 ? "units-down" : "";
           return (
             <div key={item.key}>
               <span>{item.label}</span>
-              <strong className={direction.trim()}>{value == null ? "—" : formatUnits(value)}</strong>
+              <div className="bet-figures">
+                <strong className={direction}>{value == null ? "—" : formatUnits(value)}</strong>
+                <span className="bet-record">{record == null ? "—" : formatRecord(record.wins, record.losses)}</span>
+              </div>
             </div>
           );
         })}
+      </section>
+      <section className="card bet-list" aria-label="Settled bets">
+        <h2>Settled</h2>
+        {totals && totals.settled.length > 0 ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  <th className="num">Units</th>
+                  <th>Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {totals.settled.map((bet, index) => (
+                  <tr key={`${bet.playerName}|${bet.units}|${bet.result}|${index}`}>
+                    <td>{bet.playerName}</td>
+                    <td className="num">{formatStake(bet.units)}</td>
+                    <td><span className={`grade ${bet.result.toLowerCase()}`}>{bet.result}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
+      <section className="card bet-list" aria-label="Pending bets">
+        <h2>Pending</h2>
+        {totals && totals.pending.length > 0 ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  <th className="num">Units</th>
+                </tr>
+              </thead>
+              <tbody>
+                {totals.pending.map((bet, index) => (
+                  <tr key={`${bet.playerName}|${bet.units}|${index}`}>
+                    <td>{bet.playerName}</td>
+                    <td className="num">{formatStake(bet.units)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </section>
       {error ? <section className="status" aria-live="polite"><p>{error}</p></section> : null}
       {aboutOpen ? <AboutDesk onClose={() => setAboutOpen(false)} /> : null}
