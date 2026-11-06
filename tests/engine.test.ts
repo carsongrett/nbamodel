@@ -31,6 +31,10 @@ import {
   weightedOppReboundDiff,
   weightedPace,
   weightedPaceDiff,
+  DIMERS_BASELINE_WEIGHT,
+  SPORTSLINE_BASELINE_WEIGHT,
+  sameNumber,
+  setPropLine,
   chicagoDateOf,
   chicagoToday,
   tipLabel,
@@ -856,4 +860,205 @@ test("upsert keeps a single row per key", () => {
   assert.equal(once.updated, 1);
   assert.equal(once.inserted, 1);
   assert.deepEqual(once.rows.map((r) => r.n), [2, 3]);
+});
+
+test("a projections save stores pre-division gaps and that day's sliders", () => {
+  const date = "2026-11-06";
+  const gameId = "g-lal";
+  const savedAt = "2026-11-06T18:00:00.000Z";
+  const settings: Settings = {
+    ...DEFAULT_SETTINGS,
+    dvpPointsStrength: 4,
+    dvpReboundsStrength: 3,
+    pacePointsStrength: 6,
+    paceReboundsStrength: 8,
+    recentPointsStrength: 9,
+    recentReboundsStrength: 11,
+    minutesPointsStrength: 5,
+    minutesReboundsStrength: 4,
+    oppReboundsStrength: 7,
+    minRecentGames: 3,
+    minRateGames: 5,
+  };
+  const luka = "luka";
+  const austin = "austin";
+  const max = "max";
+  const db: Database = {
+    ...emptyDatabase(),
+    settings,
+    teams: [
+      { teamId: "LAL", name: "Lakers" },
+      { teamId: "TOR", name: "Raptors" },
+    ],
+    players: [
+      { playerId: luka, displayName: "Luka Doncic", teamId: "LAL", position: "PG", season: CURRENT_SEASON },
+      { playerId: austin, displayName: "Austin Reaves", teamId: "LAL", position: "PG", season: CURRENT_SEASON },
+      { playerId: max, displayName: "Max Christie", teamId: "LAL", position: "PG", season: CURRENT_SEASON },
+    ],
+    games: [{ gameId, season: CURRENT_SEASON, gameDate: date, homeTeamId: "LAL", awayTeamId: "TOR", status: "scheduled" }],
+    projections: [
+      { playerId: luka, gameId, source: "sportsline", season: CURRENT_SEASON, points: 30, rebounds: 8, minutes: 36, sourceTimestamp: savedAt },
+      { playerId: luka, gameId, source: "dimers", season: CURRENT_SEASON, points: 20, rebounds: 6, minutes: 36, sourceTimestamp: savedAt },
+      { playerId: austin, gameId, source: "sportsline", season: CURRENT_SEASON, points: 18, rebounds: 4, minutes: 30, sourceTimestamp: savedAt },
+      { playerId: max, gameId, source: "sportsline", season: CURRENT_SEASON, points: 12, rebounds: 3, minutes: 22, sourceTimestamp: savedAt },
+    ],
+    lines: [
+      { playerId: luka, gameId, stat: "points", season: CURRENT_SEASON, line: 24.5, overOdds: -110, underOdds: -110, source: "manual", sourceTimestamp: savedAt },
+      { playerId: luka, gameId, stat: "rebounds", season: CURRENT_SEASON, line: 7.5, overOdds: -115, underOdds: -105, source: "manual", sourceTimestamp: savedAt },
+      { playerId: luka, gameId, stat: "points_rebounds", season: CURRENT_SEASON, line: 32.5, overOdds: -120, underOdds: 100, source: "manual", sourceTimestamp: savedAt },
+      { playerId: austin, gameId, stat: "points", season: CURRENT_SEASON, line: 16.5, overOdds: -110, underOdds: -110, source: "manual", sourceTimestamp: savedAt },
+    ],
+    rates: [
+      {
+        playerId: luka, season: CURRENT_SEASON, ptsPer100: null, ptsPer100Games: null,
+        usgPct: 28, usgGames: 10, rebPerMinute: 0.2, rebPerMinuteGames: 10,
+        recentPointsPerGame: 30, recentReboundsPerGame: 9, recentGames: 10, sourceTimestamp: savedAt,
+      },
+      {
+        playerId: austin, season: CURRENT_SEASON, ptsPer100: null, ptsPer100Games: null,
+        usgPct: 22, usgGames: 2, rebPerMinute: 0.15, rebPerMinuteGames: 10,
+        recentPointsPerGame: 21, recentReboundsPerGame: 4, recentGames: 1, sourceTimestamp: savedAt,
+      },
+    ],
+    dvp: [{ teamId: "TOR", position: "PG", season: CURRENT_SEASON, pointsDiff: 2, reboundsDiff: -1, sourceTimestamp: savedAt }],
+    pace: [{ teamId: "TOR", season: CURRENT_SEASON, pace: 104, paceDiff: 4, sourceTimestamp: savedAt }],
+    oppRebounds: [{ teamId: "TOR", season: CURRENT_SEASON, reboundDiff: 1.5, sourceTimestamp: savedAt }],
+    vegas: [{ gameId, teamId: "LAL", season: CURRENT_SEASON, spread: -6, total: 220, sourceTimestamp: savedAt }],
+  };
+
+  const ran = applyModelRun(db, date, savedAt);
+  const inputs = ran.db.projectionInputs;
+  assert.deepEqual(inputs.map((row) => `${row.playerId}:${row.stat}`).sort(), [
+    `${austin}:points`,
+    `${luka}:points`,
+    `${luka}:rebounds`,
+  ]);
+
+  const pointsBaseline = 30 * SPORTSLINE_BASELINE_WEIGHT + 20 * DIMERS_BASELINE_WEIGHT;
+  const teamPoints = favoredTeamPoints(220, -6);
+  const pointsMinutesGap = teamPoints * (36 / 48) * (28 / 100) - pointsBaseline;
+  const pointsRecentGap = 30 - pointsBaseline;
+  const pointsProjection = pointsBaseline
+    + 2 / settings.dvpPointsStrength
+    + 4 / settings.pacePointsStrength
+    + pointsRecentGap / settings.recentPointsStrength
+    + pointsMinutesGap / settings.minutesPointsStrength;
+  const reboundsBaseline = 8 * SPORTSLINE_BASELINE_WEIGHT + 6 * DIMERS_BASELINE_WEIGHT;
+  const reboundsMinutesGap = 0.2 * 36 - reboundsBaseline;
+  const reboundsRecentGap = 9 - reboundsBaseline;
+  const reboundsProjection = reboundsBaseline
+    + -1 / settings.dvpReboundsStrength
+    + 4 / settings.paceReboundsStrength
+    + reboundsRecentGap / settings.recentReboundsStrength
+    + reboundsMinutesGap / settings.minutesReboundsStrength
+    + 1.5 / settings.oppReboundsStrength;
+
+  const lukaPoints = inputs.find((row) => row.playerId === luka && row.stat === "points");
+  const lukaRebounds = inputs.find((row) => row.playerId === luka && row.stat === "rebounds");
+  assert.ok(lukaPoints && lukaRebounds);
+  assert.equal(lukaPoints.sportsline, 30);
+  assert.equal(lukaPoints.dimers, 20);
+  assert.equal(lukaPoints.minutes, 36);
+  assert.equal(lukaPoints.usage, 28);
+  assert.equal(lukaPoints.last15Points, 30);
+  assert.equal(lukaPoints.last15Rebounds, 9);
+  assert.equal(lukaPoints.opponentPace, 4);
+  assert.equal(lukaPoints.defenseVsPosition, 2);
+  assert.equal(lukaPoints.oppReboundsAllowed, 1.5);
+  assert.ok(sameNumber(lukaPoints.dvpGap ?? NaN, 2));
+  assert.ok(sameNumber(lukaPoints.paceGap ?? NaN, 4));
+  assert.ok(sameNumber(lukaPoints.recentGap ?? NaN, pointsRecentGap));
+  assert.ok(sameNumber(lukaPoints.minutesGap ?? NaN, pointsMinutesGap));
+  assert.equal(lukaPoints.oppReboundsGap, null);
+  assert.deepEqual(lukaPoints.sliders, settings);
+
+  assert.equal(lukaRebounds.sportsline, 8);
+  assert.equal(lukaRebounds.dimers, 6);
+  assert.equal(lukaRebounds.minutes, 36);
+  assert.equal(lukaRebounds.usage, 28);
+  assert.equal(lukaRebounds.last15Points, 30);
+  assert.equal(lukaRebounds.last15Rebounds, 9);
+  assert.equal(lukaRebounds.opponentPace, 4);
+  assert.equal(lukaRebounds.defenseVsPosition, -1);
+  assert.equal(lukaRebounds.oppReboundsAllowed, 1.5);
+  assert.ok(sameNumber(lukaRebounds.dvpGap ?? NaN, -1));
+  assert.ok(sameNumber(lukaRebounds.paceGap ?? NaN, 4));
+  assert.ok(sameNumber(lukaRebounds.recentGap ?? NaN, reboundsRecentGap));
+  assert.ok(sameNumber(lukaRebounds.minutesGap ?? NaN, reboundsMinutesGap));
+  assert.ok(sameNumber(lukaRebounds.oppReboundsGap ?? NaN, 1.5));
+  assert.deepEqual(lukaRebounds.sliders, settings);
+
+  const savedPoints = ran.db.pregame.find((row) => row.playerId === luka && row.stat === "points");
+  const savedRebounds = ran.db.pregame.find((row) => row.playerId === luka && row.stat === "rebounds");
+  const savedCombined = ran.db.pregame.find((row) => row.playerId === luka && row.stat === "points_rebounds");
+  assert.ok(sameNumber(savedPoints?.projection ?? NaN, pointsProjection));
+  assert.ok(sameNumber(savedRebounds?.projection ?? NaN, reboundsProjection));
+  assert.ok(sameNumber(savedCombined?.projection ?? NaN, pointsProjection + reboundsProjection));
+  const board = buildSlate(ran.db, date).rows.find((row) => row.playerId === luka);
+  assert.ok(sameNumber(board?.stats.points.projection ?? NaN, pointsProjection));
+  assert.ok(sameNumber(board?.stats.rebounds.projection ?? NaN, reboundsProjection));
+  assert.ok(sameNumber(board?.stats.points_rebounds.projection ?? NaN, pointsProjection + reboundsProjection));
+
+  const austinPoints = inputs.find((row) => row.playerId === austin && row.stat === "points");
+  assert.ok(austinPoints);
+  assert.equal(austinPoints.sportsline, 18);
+  assert.equal(austinPoints.dimers, null);
+  assert.equal(austinPoints.minutes, 30);
+  assert.equal(austinPoints.usage, 22);
+  assert.equal(austinPoints.last15Points, 21);
+  assert.equal(austinPoints.last15Rebounds, 4);
+  assert.equal(austinPoints.recentGap, null);
+  assert.equal(austinPoints.minutesGap, null);
+  assert.ok(sameNumber(austinPoints.dvpGap ?? NaN, 2));
+  assert.ok(sameNumber(austinPoints.paceGap ?? NaN, 4));
+  assert.equal(austinPoints.oppReboundsGap, null);
+  const austinSaved = ran.db.pregame.find((row) => row.playerId === austin && row.stat === "points");
+  assert.ok(sameNumber(austinSaved?.projection ?? NaN, 18 + 2 / settings.dvpPointsStrength + 4 / settings.pacePointsStrength));
+
+  const cleared = setPropLine(ran.db, luka, gameId, "rebounds", null, savedAt);
+  assert.equal(cleared.db.projectionInputs.some((row) => row.playerId === luka && row.stat === "rebounds"), false);
+  assert.equal(cleared.db.projectionInputs.some((row) => row.playerId === luka && row.stat === "points"), true);
+  assert.equal(cleared.db.pregame.some((row) => row.playerId === luka && row.stat === "rebounds"), false);
+
+  const nextStrength = 12;
+  const movedAt = "2026-11-06T20:00:00.000Z";
+  const moved = applyModelRun({
+    ...ran.db,
+    settings: { ...settings, dvpPointsStrength: nextStrength },
+  }, date, movedAt);
+  const movedInput = moved.db.projectionInputs.find((row) => row.playerId === luka && row.stat === "points");
+  const movedSaved = moved.db.pregame.find((row) => row.playerId === luka && row.stat === "points");
+  assert.equal(movedInput?.savedAt, movedAt);
+  assert.ok(sameNumber(movedInput?.dvpGap ?? NaN, 2));
+  assert.ok(sameNumber(movedInput?.recentGap ?? NaN, pointsRecentGap));
+  assert.ok(sameNumber(movedInput?.minutesGap ?? NaN, pointsMinutesGap));
+  assert.equal(movedInput?.sliders.dvpPointsStrength, nextStrength);
+  assert.equal(movedInput?.sliders.pacePointsStrength, settings.pacePointsStrength);
+  const movedProjection = pointsBaseline
+    + 2 / nextStrength
+    + 4 / settings.pacePointsStrength
+    + pointsRecentGap / settings.recentPointsStrength
+    + pointsMinutesGap / settings.minutesPointsStrength;
+  assert.ok(sameNumber(movedSaved?.projection ?? NaN, movedProjection));
+  assert.ok(sameNumber(buildSlate(moved.db, date).rows.find((row) => row.playerId === luka)?.stats.points.projection ?? NaN, movedProjection));
+
+  const frozenAt = "2026-11-07T12:00:00.000Z";
+  const frozen = applyModelRun({
+    ...moved.db,
+    settings: { ...moved.db.settings, dvpPointsStrength: 2 },
+    projections: moved.db.projections.map((row) => row.playerId === luka && row.source === "sportsline" ? { ...row, points: 99 } : row),
+    actuals: [{ playerId: luka, gameId, season: CURRENT_SEASON, dnp: false, points: 40, rebounds: 12, sourceTimestamp: frozenAt }],
+  }, date, frozenAt);
+  const frozenInput = frozen.db.projectionInputs.find((row) => row.playerId === luka && row.stat === "points");
+  const frozenSaved = frozen.db.pregame.find((row) => row.playerId === luka && row.stat === "points");
+  assert.deepEqual(frozenInput, movedInput);
+  assert.equal(frozenSaved?.projection, movedSaved?.projection);
+  assert.equal(frozenSaved?.savedAt, movedAt);
+  const frozenBoard = buildSlate(frozen.db, date).rows.find((row) => row.playerId === luka);
+  assert.equal(frozenBoard?.stats.points.projection, movedSaved?.projection);
+  assert.equal(frozenBoard?.stats.points.source, "saved");
+  const austinFrozen = frozen.db.projectionInputs.find((row) => row.playerId === austin && row.stat === "points");
+  assert.equal(austinFrozen?.savedAt, frozenAt);
+  assert.equal(austinFrozen?.sliders.dvpPointsStrength, 2);
+  assert.equal(austinFrozen?.sportsline, 18);
 });

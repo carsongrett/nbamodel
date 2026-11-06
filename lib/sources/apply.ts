@@ -135,6 +135,7 @@ export function stripSample(db: Database): { db: Database; removed: number } {
       rates: db.rates.filter((row) => !samplePlayer(row.playerId)),
       actuals: db.actuals.filter((row) => !samplePlayer(row.playerId) && !sampleGame(row.gameId)),
       pregame: db.pregame.filter((row) => !samplePlayer(row.playerId) && !sampleGame(row.gameId)),
+      projectionInputs: (db.projectionInputs ?? []).filter((row) => !samplePlayer(row.playerId) && !sampleGame(row.gameId)),
       overrides: db.overrides.filter((row) => !samplePlayer(row.playerId) && !sampleGame(row.gameId)),
       idMap: db.idMap.filter((row) => !samplePlayer(row.canonicalId)),
       research: db.research.filter((row) => row.playerId == null || !samplePlayer(row.playerId)),
