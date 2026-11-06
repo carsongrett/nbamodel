@@ -2,7 +2,7 @@
 
 Personal NBA prop desk for 2026–27 points, rebounds, and points plus rebounds.
 
-Projections start from SportsLine, then apply defense versus position, opponent pace, opponent rebounds, last-15 form, and a minutes share. The points line is only a weight in the last-15 and minutes-share points terms. Today shows the board. Projections loads the public sites and grades earlier saved slates without replacing them. Lines loads BettingPros points and rebounds. History grades a player once a line exists. A failed source stops that click and leaves the last save in place. Login is a single owner. There is no sign-up, no scheduled run, and no betting automation.
+Projections start from a baseline of SportsLine × 0.65 + Dimers × 0.35, then apply defense versus position, opponent pace, opponent rebounds, last-15 form, and a minutes share. Recent form and the minutes share are measured against that baseline. The betting line is the grading comparison. Today shows the board. Projections loads the public sites and grades earlier saved slates without replacing them. Lines loads BettingPros points and rebounds. History grades a player once a line exists. A failed source stops that click and leaves the last save in place. Login is a single owner. There is no sign-up, no scheduled run, and no betting automation.
 
 ```bash
 npm install

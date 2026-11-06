@@ -35,7 +35,7 @@ test("sample slate imports once, reloads without new rows, and keeps ids exact",
   assert.ok(second.results.reduce((sum, result) => sum + result.updated, 0) > 0);
 });
 
-test("sample projections use the points line only as a weight", () => {
+test("sample projections keep the betting line out of recent and minutes", () => {
   const db = importBundle(emptyDatabase(), load("slate")).db;
   const before = buildSlate(db, "2026-11-01");
   const luka = before.rows.find((row) => row.playerId === "player_luka");
@@ -46,8 +46,17 @@ test("sample projections use the points line only as a weight", () => {
     lines: db.lines.map((line) => line.playerId === "player_luka" && line.stat === "points" ? { ...line, line: line.line + 10 } : line),
   }, "2026-11-01");
   const lukaAgain = changed.rows.find((row) => row.playerId === "player_luka");
-  assert.notEqual(lukaAgain?.stats.points.projection, luka.stats.points.projection);
+  assert.equal(lukaAgain?.stats.points.projection, luka.stats.points.projection);
+  assert.equal(lukaAgain?.stats.rebounds.projection, luka.stats.rebounds.projection);
   assert.notEqual(lukaAgain?.stats.points.edge, luka.stats.points.edge);
+  const recent = luka.stats.points.adjustments.find((item) => item.key === "recent");
+  assert.equal(recent?.status, "applied");
+  assert.equal(recent?.delta, (33 - (luka.stats.points.baseline ?? 0)) / 10);
+  assert.match(recent?.detail ?? "", /points baseline/);
+  assert.doesNotMatch(recent?.detail ?? "", /points line/);
+  const reboundsRecent = luka.stats.rebounds.adjustments.find((item) => item.key === "recent");
+  assert.equal(reboundsRecent?.delta, (9 - (luka.stats.rebounds.baseline ?? 0)) / 10);
+  assert.match(reboundsRecent?.detail ?? "", /rebounds baseline/);
   const minutes = luka.stats.points.adjustments.find((item) => item.key === "minutes");
   assert.equal(minutes?.status, "skipped");
   assert.match(minutes?.reason ?? "", /usage percent is missing/);
