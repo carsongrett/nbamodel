@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { canonicalizeDatabase, emptyDatabase, mergeSettings, type Actual, type Database, type Dvp, type DvpWindow, type Finding, type Game, type IdMap, type MinutesOverride, type OppRebound, type OutsideProjection, type PaceRow, type Player, type PlayerRate, type PregameStat, type PropLine, type Settings, type Team, type Vegas } from "./engine";
-import { num, projectionFromStoreRow, selectAllRows, str } from "./store-pages";
+import { num, projectionFromStoreRow, projectionInputFromStoreRow, projectionInputToStoreRow, selectAllRows, str } from "./store-pages";
 
 export type StorageMode = "local" | "supabase";
 
@@ -54,7 +54,12 @@ class FileStore implements Store {
     try {
       const text = await readFile(this.file, "utf8");
       const parsed = JSON.parse(text) as Database;
-      return { ...emptyDatabase(), ...parsed, settings: mergeSettings(parsed.settings) };
+      return {
+        ...emptyDatabase(),
+        ...parsed,
+        settings: mergeSettings(parsed.settings),
+        projectionInputs: Array.isArray(parsed.projectionInputs) ? parsed.projectionInputs : [],
+      };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyDatabase();
       throw error;
@@ -82,6 +87,7 @@ const TABLE_ORDER: Record<string, string[]> = {
   settings: ["id"],
   overrides: ["player_id", "game_id"],
   pregame: ["player_id", "game_id", "stat"],
+  projection_inputs: ["player_id", "game_id", "stat"],
   actuals: ["player_id", "game_id"],
   research_findings: ["id"],
 };
@@ -92,7 +98,7 @@ class SupabaseStore implements Store {
 
   async read(): Promise<Database> {
     const [
-      teams, players, games, idMap, projections, lines, rates, dvp, pace, oppRebounds, vegas, settings, overrides, pregame, actuals, research,
+      teams, players, games, idMap, projections, lines, rates, dvp, pace, oppRebounds, vegas, settings, overrides, pregame, projectionInputs, actuals, research,
     ] = await Promise.all([
       this.select("teams"),
       this.select("players"),
@@ -108,6 +114,11 @@ class SupabaseStore implements Store {
       this.select("settings"),
       this.select("overrides"),
       this.select("pregame"),
+      this.select("projection_inputs").catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : "";
+        if (missingProjectionInputsTable(message)) return [];
+        throw error;
+      }),
       this.select("actuals"),
       this.select("research_findings"),
     ]);
@@ -225,6 +236,10 @@ class SupabaseStore implements Store {
         savedAt: String(row.saved_at),
         sourcesUsed: Array.isArray(row.sources_used) ? row.sources_used as string[] : [],
       })),
+      projectionInputs: projectionInputs.flatMap((row) => {
+        const input = projectionInputFromStoreRow(row);
+        return input ? [input] : [];
+      }),
       actuals: actuals.map((row) => ({
         playerId: String(row.player_id),
         gameId: String(row.game_id),
@@ -332,6 +347,7 @@ class SupabaseStore implements Store {
       units: row.units ?? null,
       saved_at: row.savedAt, sources_used: row.sourcesUsed,
     })), ["player_id", "game_id", "stat"], (row) => !lockedKeys.has(`${row.player_id}|${row.game_id}`));
+    await this.replaceProjectionInputs(db, lockedKeys);
     await this.replace("actuals", db.actuals.map((row: Actual) => ({
       player_id: row.playerId, game_id: row.gameId, season: row.season, dnp: row.dnp,
       points: row.points, rebounds: row.rebounds, source_timestamp: row.sourceTimestamp,
@@ -358,6 +374,20 @@ class SupabaseStore implements Store {
     if (rows.length === 0) return;
     const { error } = await this.client.from(table).upsert(rows);
     if (error) throw new Error(`${table}: ${error.message}`);
+  }
+
+  private async replaceProjectionInputs(db: Database, lockedKeys: Set<string>): Promise<void> {
+    const rows = (db.projectionInputs ?? [])
+      .filter((row) => !lockedKeys.has(`${row.playerId}|${row.gameId}`))
+      .map((row) => projectionInputToStoreRow(row));
+    const keys = ["player_id", "game_id", "stat"];
+    const canDelete = (row: Record<string, unknown>) => !lockedKeys.has(`${row.player_id}|${row.game_id}`);
+    try {
+      await this.replace("projection_inputs", rows, keys, canDelete);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (!missingProjectionInputsTable(message)) throw error;
+    }
   }
 
   private async replaceUnits(
@@ -398,6 +428,15 @@ class SupabaseStore implements Store {
       if (error) throw new Error(`${table}: ${error.message}`);
     }
   }
+}
+
+function missingProjectionInputsTable(message: string): boolean {
+  const text = message.toLowerCase();
+  return text.includes("projection_inputs") && (
+    text.includes("schema cache")
+    || text.includes("does not exist")
+    || text.includes("could not find")
+  );
 }
 
 function dvpWindow(value: unknown): DvpWindow | null {

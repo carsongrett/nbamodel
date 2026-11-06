@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
-import { buildSlate, CURRENT_SEASON, DIMERS_BASELINE_WEIGHT, emptyDatabase, SPORTSLINE_BASELINE_WEIGHT, type Database } from "../lib/engine.ts";
-import { loadOutsideProjections, projectionFromStoreRow, STORE_PAGE_SIZE, type StorePage } from "../lib/store-pages.ts";
+import { buildSlate, CURRENT_SEASON, DEFAULT_SETTINGS, DIMERS_BASELINE_WEIGHT, emptyDatabase, SPORTSLINE_BASELINE_WEIGHT, type Database, type ProjectionInput } from "../lib/engine.ts";
+import { loadOutsideProjections, projectionFromStoreRow, projectionInputFromStoreRow, projectionInputToStoreRow, STORE_PAGE_SIZE, type StorePage } from "../lib/store-pages.ts";
 
 const date = "2026-11-04";
 const gameId = `${date}|TOR@LAL`;
@@ -100,4 +101,36 @@ test("a saved run restores Dimers with SportsLine, including a missing source", 
   assert.match(reavesPoints?.adjustments.find((row) => row.key === "dimers")?.detail ?? "", /full points baseline/);
   assert.match(reaves?.stats.rebounds.flags.join(" ") ?? "", /Dimers rebounds are missing/);
   assert.match(reaves?.stats.rebounds.adjustments.find((row) => row.key === "dimers")?.detail ?? "", /full rebounds baseline/);
+});
+
+test("projection input columns match the migration", () => {
+  const input: ProjectionInput = {
+    playerId: "luka",
+    gameId: "g1",
+    stat: "rebounds",
+    slateDate: date,
+    savedAt,
+    sportsline: 8,
+    dimers: null,
+    minutes: 36,
+    usage: 28.4,
+    last15Points: 30,
+    last15Rebounds: 9,
+    opponentPace: 4,
+    defenseVsPosition: -1,
+    oppReboundsAllowed: 1.5,
+    dvpGap: -1,
+    paceGap: 4,
+    recentGap: null,
+    minutesGap: 1.25,
+    oppReboundsGap: 1.5,
+    sliders: { ...DEFAULT_SETTINGS, dvpReboundsStrength: 3, minRecentGames: 4 },
+  };
+  const row = projectionInputToStoreRow(input);
+  const sql = readFileSync(new URL("../supabase/migrations/20261106120000_projection_inputs.sql", import.meta.url), "utf8");
+  for (const column of Object.keys(row)) assert.match(sql, new RegExp(`\\b${column}\\b`));
+  assert.equal(row.opp_rebounds_gap, 1.5);
+  assert.equal(row.recent_gap, null);
+  assert.deepEqual(projectionInputFromStoreRow(row), input);
+  assert.equal(projectionInputFromStoreRow({ ...row, stat: "points_rebounds" }), null);
 });

@@ -215,6 +215,38 @@ export type PregameStat = {
   /** Units staked with the model for this saved stat. Empty when he did not bet. */
   units?: number | null;
 };
+/**
+ * Inputs stored with a saved points or rebounds projection.
+ * Gaps are the numerators before that day's slider divides them. Null means the term was not applied.
+ * Points + rebounds has no terms of its own, so it has no row.
+ */
+export type ProjectionInput = {
+  playerId: string;
+  gameId: string;
+  stat: "points" | "rebounds";
+  slateDate: string;
+  savedAt: string;
+  sportsline: number | null;
+  dimers: number | null;
+  minutes: number | null;
+  /** Season usage percent, the same figure the minutes term uses. */
+  usage: number | null;
+  last15Points: number | null;
+  last15Rebounds: number | null;
+  /** Opponent pace differential: possessions versus the league. */
+  opponentPace: number | null;
+  /** Defense versus position for this stat. */
+  defenseVsPosition: number | null;
+  /** Opponent rebounds allowed versus the league blend. */
+  oppReboundsAllowed: number | null;
+  dvpGap: number | null;
+  paceGap: number | null;
+  recentGap: number | null;
+  minutesGap: number | null;
+  /** Null for points. Rebounds only, and only when that term was divided. */
+  oppReboundsGap: number | null;
+  sliders: Settings;
+};
 export type Database = {
   teams: Team[];
   players: Player[];
@@ -230,6 +262,7 @@ export type Database = {
   settings: Settings;
   overrides: MinutesOverride[];
   pregame: PregameStat[];
+  projectionInputs: ProjectionInput[];
   actuals: Actual[];
   research: Finding[];
 };
@@ -262,6 +295,7 @@ export function emptyDatabase(): Database {
     settings: { ...DEFAULT_SETTINGS },
     overrides: [],
     pregame: [],
+    projectionInputs: [],
     actuals: [],
     research: [],
   };
@@ -1712,6 +1746,7 @@ export function setPropLine(
       ...db,
       lines: db.lines.filter((row) => !same(row)),
       pregame: db.pregame.filter((row) => !(idsEqual(row.playerId, playerId) && idsEqual(row.gameId, gameId) && row.stat === stat)),
+      projectionInputs: (db.projectionInputs ?? []).filter((row) => !(idsEqual(row.playerId, playerId) && idsEqual(row.gameId, gameId) && row.stat === stat)),
     };
     return { db: cleared, stored: false };
   }
@@ -1780,6 +1815,20 @@ export function setBetUnits(
   return { db: remembered.db };
 }
 
+type ProjectionCapture = {
+  sportslinePoints: number | null;
+  dimersPoints: number | null;
+  sportslineRebounds: number | null;
+  dimersRebounds: number | null;
+  usage: number | null;
+  last15Points: number | null;
+  last15Rebounds: number | null;
+  opponentPace: number | null;
+  pointsDvp: number | null;
+  reboundsDvp: number | null;
+  oppReboundsAllowed: number | null;
+};
+
 type Eval = {
   points: StatProjection;
   rebounds: StatProjection;
@@ -1789,7 +1838,12 @@ type Eval = {
   impliedTeamPoints: number | null;
   impliedDetail: string | null;
   stamps: { label: string; timestamp: string | null }[];
+  captured: ProjectionCapture;
 };
+
+function finiteNumber(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
 
 function current<T extends { season: string }>(rows: T[]): T[] {
   return rows.filter((row) => row.season === CURRENT_SEASON);
@@ -1873,7 +1927,21 @@ function evaluatePlayer(db: Database, player: Player, game: Game): Eval {
     ...lineStamps,
   ];
 
-  return { points, rebounds, combined, minutesImported, minutesUsed, impliedTeamPoints: implied, impliedDetail, stamps };
+  const captured: ProjectionCapture = {
+    sportslinePoints: finiteNumber(projections.find((row) => row.source === "sportsline")?.points),
+    dimersPoints: finiteNumber(projections.find((row) => row.source === "dimers")?.points),
+    sportslineRebounds: finiteNumber(projections.find((row) => row.source === "sportsline")?.rebounds),
+    dimersRebounds: finiteNumber(projections.find((row) => row.source === "dimers")?.rebounds),
+    usage: finiteNumber(rate?.usgPct),
+    last15Points: finiteNumber(rate?.recentPointsPerGame),
+    last15Rebounds: finiteNumber(rate?.recentReboundsPerGame),
+    opponentPace: finiteNumber(oppPace?.paceDiff),
+    pointsDvp: finiteNumber(dvp?.pointsDiff),
+    reboundsDvp: finiteNumber(dvp?.reboundsDiff),
+    oppReboundsAllowed: finiteNumber(oppReb?.reboundDiff),
+  };
+
+  return { points, rebounds, combined, minutesImported, minutesUsed, impliedTeamPoints: implied, impliedDetail, stamps, captured };
 }
 
 function withFreshness(projection: StatProjection, stamps: Eval["stamps"], slateDate: string, relevant: boolean): StatProjection {
@@ -1927,6 +1995,47 @@ function rememberPregame(
   return { db: { ...db, pregame: upsertByKey(drop, [row], (item) => `${item.playerId}|${item.gameId}|${item.stat}`).rows }, stored: true };
 }
 
+function dividedGap(projection: StatProjection, key: string): number | null {
+  const term = projection.adjustments.find((row) => row.key === key);
+  if (term?.status !== "applied") return null;
+  return term.input;
+}
+
+function toProjectionInput(
+  playerId: string,
+  gameId: string,
+  date: string,
+  stat: "points" | "rebounds",
+  projection: StatProjection,
+  captured: ProjectionCapture,
+  settings: Settings,
+  savedAt: string,
+): ProjectionInput {
+  const points = stat === "points";
+  return {
+    playerId,
+    gameId,
+    stat,
+    slateDate: date,
+    savedAt,
+    sportsline: points ? captured.sportslinePoints : captured.sportslineRebounds,
+    dimers: points ? captured.dimersPoints : captured.dimersRebounds,
+    minutes: projection.minutes,
+    usage: captured.usage,
+    last15Points: captured.last15Points,
+    last15Rebounds: captured.last15Rebounds,
+    opponentPace: captured.opponentPace,
+    defenseVsPosition: points ? captured.pointsDvp : captured.reboundsDvp,
+    oppReboundsAllowed: captured.oppReboundsAllowed,
+    dvpGap: dividedGap(projection, "dvp"),
+    paceGap: dividedGap(projection, "pace"),
+    recentGap: dividedGap(projection, "recent"),
+    minutesGap: dividedGap(projection, "minutes"),
+    oppReboundsGap: points ? null : dividedGap(projection, "opp_rebounds"),
+    sliders: { ...settings },
+  };
+}
+
 function toPregame(playerId: string, gameId: string, date: string, stat: Stat, projection: StatProjection, line: PropLine | null, savedAt: string): PregameStat {
   return {
     playerId,
@@ -1954,6 +2063,7 @@ export function applyModelRun(db: Database, date: string, savedAt: string): { db
     return { db, messages: [{ level: "error", playerId: null, message: `No 2026–27 games on ${date}.` }] };
   }
   let pregame = db.pregame.slice();
+  let projectionInputs = (db.projectionInputs ?? []).slice();
   let saved = 0;
   let kept = 0;
   let blocked = 0;
@@ -1976,12 +2086,14 @@ export function applyModelRun(db: Database, date: string, savedAt: string): { db
       combined: withFreshness(evaled.combined, evaled.stamps, date, evaled.combined.status === "ok"),
     };
     const produced: PregameStat[] = [];
+    const inputs: ProjectionInput[] = [];
     for (const stat of STATS) {
       const projection = stat === "points" ? stamped.points : stat === "rebounds" ? stamped.rebounds : stamped.combined;
       const line = lineFor(db, player.playerId, game.gameId, stat);
       if (!line) {
         unlined++;
         pregame = pregame.filter((row) => !(idsEqual(row.playerId, player.playerId) && idsEqual(row.gameId, game.gameId) && row.stat === stat));
+        projectionInputs = projectionInputs.filter((row) => !(idsEqual(row.playerId, player.playerId) && idsEqual(row.gameId, game.gameId) && row.stat === stat));
         continue;
       }
       if (projection.status !== "ok" || projection.projection == null) {
@@ -1995,10 +2107,14 @@ export function applyModelRun(db: Database, date: string, savedAt: string): { db
         continue;
       }
       produced.push(toPregame(player.playerId, game.gameId, date, stat, projection, line, savedAt));
+      if (stat === "points" || stat === "rebounds") {
+        inputs.push(toProjectionInput(player.playerId, game.gameId, date, stat, projection, evaled.captured, db.settings, savedAt));
+      }
     }
     if (produced.length) {
       const merged = upsertByKey(pregame, produced, (p) => `${p.playerId}|${p.gameId}|${p.stat}`);
       pregame = merged.rows;
+      projectionInputs = upsertByKey(projectionInputs, inputs, (row) => `${row.playerId}|${row.gameId}|${row.stat}`).rows;
       saved += produced.length;
     }
   }
@@ -2007,7 +2123,7 @@ export function applyModelRun(db: Database, date: string, savedAt: string): { db
     playerId: null,
     message: `Saved ${saved} pregame stat rows. ${unlined} had no line and were left out of History. ${blocked} blocked. ${kept} player-games left locked.`,
   });
-  return { db: { ...db, pregame }, messages };
+  return { db: { ...db, pregame, projectionInputs }, messages };
 }
 
 export type SlateStat = {
@@ -2241,6 +2357,11 @@ export function canonicalizeDatabase(db: Database): Database {
       db.pregame.map((row) => ({ ...row, gameId: gameOf(row.gameId) })),
       (row) => `${row.playerId}|${row.gameId}|${row.stat}`,
       (current, incoming) => current.line != null ? current : incoming,
+    ),
+    projectionInputs: dedupe(
+      (db.projectionInputs ?? []).map((row) => ({ ...row, gameId: gameOf(row.gameId) })),
+      (row) => `${row.playerId}|${row.gameId}|${row.stat}`,
+      preferFirst,
     ),
     actuals: dedupe(
       db.actuals.map((row) => ({ ...row, gameId: gameOf(row.gameId) })),
