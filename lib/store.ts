@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { canonicalizeDatabase, emptyDatabase, mergeSettings, type Actual, type Database, type Dvp, type DvpWindow, type Finding, type Game, type IdMap, type MinutesOverride, type OppRebound, type OutsideProjection, type PaceRow, type Player, type PlayerRate, type PregameStat, type PropLine, type Settings, type Team, type Vegas } from "./engine";
+import { num, projectionFromStoreRow, selectAllRows, str } from "./store-pages";
 
 export type StorageMode = "local" | "supabase";
 
@@ -66,17 +67,24 @@ class FileStore implements Store {
   }
 }
 
-function num(value: unknown): number | null {
-  if (value == null || value === "") return null;
-  const n = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-function str(value: unknown): string | null {
-  if (value == null) return null;
-  const text = String(value);
-  return text === "" ? null : text;
-}
+const TABLE_ORDER: Record<string, string[]> = {
+  teams: ["team_id"],
+  players: ["player_id"],
+  games: ["game_id"],
+  source_id_map: ["source", "entity_type", "source_id"],
+  outside_projections: ["player_id", "game_id", "source"],
+  prop_lines: ["player_id", "game_id", "stat"],
+  player_rates: ["player_id"],
+  dvp: ["team_id", "position"],
+  pace: ["team_id"],
+  opp_rebounds: ["team_id"],
+  vegas: ["game_id", "team_id"],
+  settings: ["id"],
+  overrides: ["player_id", "game_id"],
+  pregame: ["player_id", "game_id", "stat"],
+  actuals: ["player_id", "game_id"],
+  research_findings: ["id"],
+};
 
 class SupabaseStore implements Store {
   mode: StorageMode = "supabase";
@@ -128,16 +136,7 @@ class SupabaseStore implements Store {
         sourceId: String(row.source_id),
         canonicalId: String(row.canonical_id),
       })),
-      projections: projections.map((row) => ({
-        playerId: String(row.player_id),
-        gameId: String(row.game_id),
-        source: String(row.source),
-        season: String(row.season),
-        points: num(row.points),
-        rebounds: num(row.rebounds),
-        minutes: num(row.minutes),
-        sourceTimestamp: str(row.source_timestamp),
-      })),
+      projections: projections.map(projectionFromStoreRow),
       lines: lines.map((row) => ({
         playerId: String(row.player_id),
         gameId: String(row.game_id),
@@ -346,9 +345,13 @@ class SupabaseStore implements Store {
   }
 
   private async select(table: string): Promise<Record<string, unknown>[]> {
-    const { data, error } = await this.client.from(table).select("*").limit(5000);
-    if (error) throw new Error(`${table}: ${error.message}`);
-    return (data ?? []) as Record<string, unknown>[];
+    const ordering = TABLE_ORDER[table] ?? [];
+    return selectAllRows(table, async (from, to) => {
+      let query = this.client.from(table).select("*");
+      for (const column of ordering) query = query.order(column);
+      const { data, error } = await query.range(from, to);
+      return { data: (data ?? null) as Record<string, unknown>[] | null, error };
+    });
   }
 
   private async upsert(table: string, rows: Record<string, unknown>[]): Promise<void> {
