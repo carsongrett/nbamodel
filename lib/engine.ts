@@ -535,7 +535,7 @@ export type PointsInput = {
   usgPct?: number | null;
   usgGames?: number | null;
   strengths: Settings;
-  /** Points line. Used only in the last-15 and minutes-share weights. */
+  /** Betting line. Recent and minutes subtract the projection baseline, so this does not change the projection. */
   line?: number | null;
 };
 
@@ -552,6 +552,7 @@ export type ReboundsInput = {
   paceDiff: number | null;
   oppReboundDiff: number | null;
   strengths: Settings;
+  /** Betting line. Recent and minutes subtract the projection baseline, so this does not change the projection. */
   line?: number | null;
 };
 
@@ -718,25 +719,23 @@ export function projectPoints(input: PointsInput): StatProjection {
   const recentSample = input.recentPerGame == null
     ? "recent points per game is missing"
     : sampleGate(input.recentGames, s.minRecentGames, "Recent points");
-  const recentReason = recentSample ?? (input.line == null ? "points line is missing" : null);
-  if (recentReason) adjustments.push(skip("recent", "Recent performance", recentReason, s.recentPointsStrength));
+  if (recentSample) adjustments.push(skip("recent", "Recent performance", recentSample, s.recentPointsStrength));
   else {
     const recent = input.recentPerGame as number;
-    const line = input.line as number;
-    const delta = (recent - line) / s.recentPointsStrength;
+    const delta = (recent - baseline) / s.recentPointsStrength;
     adjustments.push({
       key: "recent",
       label: "Recent performance",
       status: "applied",
       reason: null,
-      input: recent - line,
+      input: recent - baseline,
       strength: s.recentPointsStrength,
       delta,
-      detail: `(${roundDetail(recent)} last-15 points per game − ${roundDetail(line)} points line) / ${s.recentPointsStrength} = ${roundDetail(delta)}.`,
+      detail: `(${roundDetail(recent)} last-15 points per game − ${roundDetail(baseline)} points baseline) / ${s.recentPointsStrength} = ${roundDetail(delta)}.`,
     });
   }
 
-  adjustments.push(pointsMinutesAdjustment(input));
+  adjustments.push(pointsMinutesAdjustment(input, baseline));
   const minutesAdj = adjustments[adjustments.length - 1];
   if (minutesAdj.reason?.includes("mis-scaled")) flags.push(minutesAdj.reason);
 
@@ -802,7 +801,7 @@ function paceAdjustment(diff: number | null, strength: number): Adjustment {
   };
 }
 
-function pointsMinutesAdjustment(input: PointsInput): Adjustment {
+function pointsMinutesAdjustment(input: PointsInput, baseline: number): Adjustment {
   const strength = input.strengths.minutesPointsStrength;
   const label = "Minutes";
   if (input.usgPct == null) {
@@ -815,18 +814,17 @@ function pointsMinutesAdjustment(input: PointsInput): Adjustment {
   if (sample) return skip("minutes", label, sample, strength);
   if (input.projectedMinutes == null) return skip("minutes", label, "projected minutes are missing", strength);
   if (input.teamPoints == null) return skip("minutes", label, "team points are missing", strength);
-  if (input.line == null) return skip("minutes", label, "points line is missing", strength);
   const share = input.teamPoints * (input.projectedMinutes / 48) * (input.usgPct / 100);
-  const delta = (share - input.line) / strength;
+  const delta = (share - baseline) / strength;
   return {
     key: "minutes",
     label,
     status: "applied",
     reason: null,
-    input: share - input.line,
+    input: share - baseline,
     strength,
     delta,
-    detail: `${roundDetail(input.teamPoints)} team points × ${roundDetail(input.projectedMinutes)}/48 × ${roundDetail(input.usgPct)}/100 = ${roundDetail(share)}. (${roundDetail(share)} − ${roundDetail(input.line)} points line) / ${strength} = ${roundDetail(delta)}.`,
+    detail: `${roundDetail(input.teamPoints)} team points × ${roundDetail(input.projectedMinutes)}/48 × ${roundDetail(input.usgPct)}/100 = ${roundDetail(share)}. (${roundDetail(share)} − ${roundDetail(baseline)} points baseline) / ${strength} = ${roundDetail(delta)}.`,
   };
 }
 
@@ -852,30 +850,27 @@ export function projectRebounds(input: ReboundsInput): StatProjection {
 
   adjustments.push(paceAdjustment(input.paceDiff, s.paceReboundsStrength));
 
-  const sportsline = finiteSource(input.sources, SPORTSLINE_SOURCE);
-  const anchor = sportsline ?? baseline;
-  const anchorLabel = sportsline != null ? "SportsLine rebounds" : "outside rebounds";
   const recentReason = input.recentPerGame == null
     ? "recent rebounds per game is missing"
     : sampleGate(input.recentGames, s.minRecentGames, "Recent rebounds");
-  if (recentReason || anchor == null) {
-    adjustments.push(skip("recent", "Recent performance", recentReason ?? "outside rebounds are missing", s.recentReboundsStrength));
+  if (recentReason) {
+    adjustments.push(skip("recent", "Recent performance", recentReason, s.recentReboundsStrength));
   } else {
     const recent = input.recentPerGame as number;
-    const delta = (recent - anchor) / s.recentReboundsStrength;
+    const delta = (recent - baseline) / s.recentReboundsStrength;
     adjustments.push({
       key: "recent",
       label: "Recent performance",
       status: "applied",
       reason: null,
-      input: recent - anchor,
+      input: recent - baseline,
       strength: s.recentReboundsStrength,
       delta,
-      detail: `(${roundDetail(recent)} last-15 rebounds per game − ${roundDetail(anchor)} ${anchorLabel}) / ${s.recentReboundsStrength} = ${roundDetail(delta)}.`,
+      detail: `(${roundDetail(recent)} last-15 rebounds per game − ${roundDetail(baseline)} rebounds baseline) / ${s.recentReboundsStrength} = ${roundDetail(delta)}.`,
     });
   }
 
-  adjustments.push(reboundsMinutesAdjustment(input, anchor, anchorLabel));
+  adjustments.push(reboundsMinutesAdjustment(input, baseline));
   adjustments.push(oppReboundsAdjustment(input.oppReboundDiff, s.oppReboundsStrength));
 
   const projection = baseline + adjustments.reduce((sum, adj) => sum + (adj.delta ?? 0), 0);
@@ -891,7 +886,7 @@ export function projectRebounds(input: ReboundsInput): StatProjection {
   };
 }
 
-function reboundsMinutesAdjustment(input: ReboundsInput, anchor: number | null, anchorLabel: string): Adjustment {
+function reboundsMinutesAdjustment(input: ReboundsInput, baseline: number): Adjustment {
   const strength = input.strengths.minutesReboundsStrength;
   const label = "Minutes";
   if (input.rebPerMinute == null) return skip("minutes", label, "rebounds per minute is missing", strength);
@@ -901,18 +896,17 @@ function reboundsMinutesAdjustment(input: ReboundsInput, anchor: number | null, 
   const sample = sampleGate(input.rebPerMinuteGames, input.strengths.minRateGames, "Rebounds per minute");
   if (sample) return skip("minutes", label, sample, strength);
   if (input.projectedMinutes == null) return skip("minutes", label, "projected minutes are missing", strength);
-  if (anchor == null) return skip("minutes", label, "outside rebounds are missing", strength);
   const expected = input.rebPerMinute * input.projectedMinutes;
-  const delta = (expected - anchor) / strength;
+  const delta = (expected - baseline) / strength;
   return {
     key: "minutes",
     label,
     status: "applied",
     reason: null,
-    input: expected - anchor,
+    input: expected - baseline,
     strength,
     delta,
-    detail: `${roundDetail(input.rebPerMinute)} rebounds per minute × ${roundDetail(input.projectedMinutes)} minutes = ${roundDetail(expected)}. (${roundDetail(expected)} − ${roundDetail(anchor)} ${anchorLabel}) / ${strength} = ${roundDetail(delta)}.`,
+    detail: `${roundDetail(input.rebPerMinute)} rebounds per minute × ${roundDetail(input.projectedMinutes)} minutes = ${roundDetail(expected)}. (${roundDetail(expected)} − ${roundDetail(baseline)} rebounds baseline) / ${strength} = ${roundDetail(delta)}.`,
   };
 }
 

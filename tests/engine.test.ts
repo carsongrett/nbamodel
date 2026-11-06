@@ -97,24 +97,60 @@ test("a mis-scaled usage rate is skipped instead of applied", () => {
   assert.equal(projection.status, "ok");
 });
 
-test("the points line is only the last-15 and minutes-share weight", () => {
-  const low = basePoints({ line: 20 });
-  const high = basePoints({ line: 40 });
-  assert.notEqual(low.projection, high.projection);
-  const recent = low.adjustments.find((a) => a.key === "recent");
-  assert.equal(recent?.delta, (33 - 20) / 10);
-  const weighted = basePoints({
+test("recent and minutes subtract the projection baseline, not the betting line", () => {
+  const blended = basePoints({
+    sources: [
+      { source: "sportsline", value: 20 },
+      { source: "dimers", value: 30 },
+    ],
+    line: 40,
+    usgPct: 20,
+    usgGames: 10,
+    teamPoints: 110,
+    projectedMinutes: 36,
+  });
+  const baseline = 20 * 0.65 + 30 * 0.35;
+  assert.equal(blended.baseline, baseline);
+  const recent = blended.adjustments.find((a) => a.key === "recent");
+  assert.equal(recent?.delta, (33 - baseline) / 10);
+  assert.equal(recent?.input, 33 - baseline);
+  assert.match(recent?.detail ?? "", /points baseline/);
+  assert.doesNotMatch(recent?.detail ?? "", /points line/);
+  const share = 110 * (36 / 48) * (20 / 100);
+  const minutes = blended.adjustments.find((a) => a.key === "minutes");
+  assert.equal(minutes?.delta, (share - baseline) / 3);
+  assert.match(minutes?.detail ?? "", /points baseline/);
+  assert.doesNotMatch(minutes?.detail ?? "", /points line/);
+  const otherLine = basePoints({
+    sources: [
+      { source: "sportsline", value: 20 },
+      { source: "dimers", value: 30 },
+    ],
+    line: 12,
+    usgPct: 20,
+    usgGames: 10,
+    teamPoints: 110,
+    projectedMinutes: 36,
+  });
+  assert.equal(otherLine.projection, blended.projection);
+  assert.equal(otherLine.adjustments.find((a) => a.key === "recent")?.delta, recent?.delta);
+  assert.equal(otherLine.adjustments.find((a) => a.key === "minutes")?.delta, minutes?.delta);
+
+  const sportslineOnly = basePoints({
+    sources: [{ source: "sportsline", value: 28 }],
     line: 20,
     usgPct: 20,
     usgGames: 10,
     teamPoints: 110,
     projectedMinutes: 36,
-    sources: [{ source: "sportsline", value: 28 }],
   });
-  const share = 110 * (36 / 48) * (20 / 100);
-  assert.equal(weighted.adjustments.find((a) => a.key === "minutes")?.delta, (share - 20) / 3);
+  assert.equal(sportslineOnly.baseline, 28);
+  assert.equal(sportslineOnly.adjustments.find((a) => a.key === "minutes")?.delta, (share - 28) / 3);
+  assert.equal(sportslineOnly.adjustments.find((a) => a.key === "recent")?.delta, (33 - 28) / 10);
+
   assert.equal(basePoints({ paceDiff: 5 }).adjustments.find((a) => a.key === "pace")?.delta, 1);
   assert.equal(basePoints({ paceDiff: null }).adjustments.find((a) => a.key === "pace")?.status, "skipped");
+  assert.equal(basePoints({ dvpDiff: 4 }).adjustments.find((a) => a.key === "dvp")?.delta, 4 / 2);
 });
 
 test("missing optional adjustments are skipped and a missing baseline blocks", () => {
@@ -182,11 +218,21 @@ test("points and rebounds blend SportsLine at 65 and Dimers at 35", () => {
     oppReboundDiff: 0,
     strengths,
   });
-  assert.equal(rebounds.baseline, 8 * 0.65 + 4 * 0.35);
+  const reboundsBaseline = 8 * 0.65 + 4 * 0.35;
+  assert.equal(rebounds.baseline, reboundsBaseline);
   assert.equal(rebounds.adjustments.find((row) => row.key === "sportsline")?.input, 8);
   assert.equal(rebounds.adjustments.find((row) => row.key === "dimers")?.input, 4);
-  assert.equal(rebounds.adjustments.find((row) => row.key === "recent")?.delta, (8 - 8) / 10);
-  assert.equal(rebounds.adjustments.find((row) => row.key === "minutes")?.delta, (0.2 * 30 - 8) / 2);
+  const reboundsRecent = rebounds.adjustments.find((row) => row.key === "recent");
+  const reboundsMinutes = rebounds.adjustments.find((row) => row.key === "minutes");
+  assert.equal(reboundsRecent?.delta, (8 - reboundsBaseline) / 10);
+  assert.equal(reboundsMinutes?.delta, (0.2 * 30 - reboundsBaseline) / 2);
+  assert.match(reboundsRecent?.detail ?? "", /rebounds baseline/);
+  assert.match(reboundsMinutes?.detail ?? "", /rebounds baseline/);
+  assert.doesNotMatch(reboundsRecent?.detail ?? "", /SportsLine|rebounds line/);
+  assert.doesNotMatch(reboundsMinutes?.detail ?? "", /SportsLine|rebounds line/);
+  assert.equal(rebounds.adjustments.find((row) => row.key === "dvp")?.delta, 0);
+  assert.equal(rebounds.adjustments.find((row) => row.key === "pace")?.delta, 0);
+  assert.equal(rebounds.adjustments.find((row) => row.key === "opp_rebounds")?.delta, 0);
 });
 
 test("a missing SportsLine or Dimers number leaves the other as the full baseline", () => {
@@ -201,6 +247,8 @@ test("a missing SportsLine or Dimers number leaves the other as the full baselin
   assert.deepEqual(missingDimers.sourcesUsed, ["sportsline"]);
   assert.match(missingDimers.flags.join(" "), /Dimers points are missing/);
   assert.match(missingDimers.adjustments.find((row) => row.key === "dimers")?.detail ?? "", /full points baseline/);
+  assert.equal(missingDimers.adjustments.find((row) => row.key === "recent")?.delta, (33 - 20) / 10);
+  assert.match(missingDimers.adjustments.find((row) => row.key === "recent")?.detail ?? "", /points baseline/);
 
   const missingSportsline = projectRebounds({
     sources: [{ source: "dimers", value: 11 }],
@@ -219,6 +267,10 @@ test("a missing SportsLine or Dimers number leaves the other as the full baselin
   assert.equal(missingSportsline.adjustments.some((row) => row.key === "sportsline"), false);
   assert.match(missingSportsline.flags.join(" "), /SportsLine rebounds are missing/);
   assert.match(missingSportsline.adjustments.find((row) => row.key === "dimers")?.detail ?? "", /full rebounds baseline/);
+  assert.equal(missingSportsline.adjustments.find((row) => row.key === "recent")?.delta, (8 - 11) / 10);
+  assert.equal(missingSportsline.adjustments.find((row) => row.key === "minutes")?.delta, (0.2 * 30 - 11) / 2);
+  assert.match(missingSportsline.adjustments.find((row) => row.key === "recent")?.detail ?? "", /rebounds baseline/);
+  assert.match(missingSportsline.adjustments.find((row) => row.key === "minutes")?.detail ?? "", /rebounds baseline/);
 
   const sportslineOnly = basePoints({ sources: [{ source: "sportsline", value: 20 }] });
   assert.equal(sportslineOnly.baseline, 20);
@@ -250,6 +302,8 @@ test("rebounds minutes use per-minute times minutes, and P+R adds the two projec
   });
   const minutes = rebounds.adjustments.find((a) => a.key === "minutes");
   assert.equal(minutes?.delta, (0.2 * 30 - 8) / 2);
+  assert.match(minutes?.detail ?? "", /rebounds baseline/);
+  assert.doesNotMatch(minutes?.detail ?? "", /SportsLine|rebounds line/);
   const changedLine = projectRebounds({
     sources: [{ source: "sportsline", value: 8 }],
     projectedMinutes: 30,

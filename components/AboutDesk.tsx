@@ -25,11 +25,11 @@ const POINTS = [
   },
   {
     title: "Recent",
-    body: "Recent is Basketball Reference last-15-days points per game minus the points line, divided by 10.",
+    body: "Recent is Basketball Reference last-15-days points per game minus the points baseline, divided by 10.",
   },
   {
     title: "Minutes",
-    body: "Minutes is implied team points × (SportsLine minutes / 48) × (Basketball Reference season usage percent / 100), minus the points line, divided by the minutes slider, which defaults to 3. Team points are half the game total, plus the spread when the team is favored and minus it when not. Spread and total come from ESPN.",
+    body: "Minutes is implied team points × (SportsLine minutes / 48) × (Basketball Reference season usage percent / 100), minus the points baseline, divided by the minutes slider, which defaults to 3. Team points are half the game total, plus the spread when the team is favored and minus it when not. Spread and total come from ESPN.",
   },
   {
     title: "Projection",
