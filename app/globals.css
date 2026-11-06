@@ -50,8 +50,12 @@ button:disabled { opacity: 0.55; cursor: wait; }
 .summary div { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
 .summary span { display: block; color: var(--muted); font-size: 12px; }
 .summary strong { font-variant-numeric: tabular-nums; font-size: 22px; }
+.bet-figures { display: flex; align-items: baseline; gap: 10px; }
+.summary .bet-figures .bet-record { display: inline; color: var(--ink); font-size: 16px; font-weight: 600; }
 .units-up { color: var(--good); }
 .units-down { color: var(--bad); }
+.bet-list { margin-bottom: 14px; }
+.bet-list .table-wrap { margin-top: 8px; }
 
 .line-distance { margin: 0 0 14px; }
 .line-distance h2 { margin: 0 0 4px; font-size: 16px; }
