@@ -37,6 +37,7 @@ test("History game heading toggles player rows the way Today does", () => {
   assert.match(historyGame, /<th>Team<\/th>/);
   assert.doesNotMatch(historyGame, /<th>Opp<\/th>/);
   assert.match(historyGame, /<th className="num">Units<\/th>/);
+  assert.match(historyGame, /<th className="num">Dollars<\/th>/);
   assert.match(historyGame, /<th className="num">Projection<\/th>/);
   assert.match(historyGame, /<th className="num">Line<\/th>/);
   assert.match(historyGame, /<th className="num">Actual<\/th>/);

@@ -7,10 +7,14 @@ export type BetWindows = {
   allTime: number;
 };
 
+/** Dollars per unit on bets saved before a size was stored. The SQL stamp writes this same 5. */
+export const LEGACY_UNIT_DOLLARS = 5;
+
 export type SettledBet = {
   slateDate: string;
   units: number;
   grade: Grade;
+  unitDollars?: number | null;
 };
 
 export type BetPlayer = {
@@ -19,6 +23,7 @@ export type BetPlayer = {
   playerName: string;
   units: number;
   result: "Win" | "Loss" | "Push";
+  dollars: number;
 };
 
 /** Even money. A win pays the units, a loss costs them, and a push is 0. Anything unsettled is left out. */
@@ -28,6 +33,19 @@ export function betProfit(units: number, grade: Grade): number | null {
   if (grade === "loss") return -units;
   if (grade === "push") return 0;
   return null;
+}
+
+/** A stored size wins. A blank size is the $5 already on bets from before this column. */
+export function unitSize(unitDollars: number | null | undefined): number {
+  if (typeof unitDollars === "number" && Number.isFinite(unitDollars) && unitDollars > 0) return unitDollars;
+  return LEGACY_UNIT_DOLLARS;
+}
+
+/** Signed dollars for one bet. Units times that row’s own size, with the same even-money rule. */
+export function betDollars(units: number, grade: Grade, unitDollars: number | null | undefined): number | null {
+  const profit = betProfit(units, grade);
+  if (profit == null) return null;
+  return profit * unitSize(unitDollars);
 }
 
 function shiftIsoDate(iso: string, days: number): string {
@@ -57,13 +75,37 @@ export function betWindowTotals(bets: readonly SettledBet[], today: string): Bet
   return totals;
 }
 
+/** Dollar windows use the same dates as the unit cards. Each bet is priced at its own size. */
+export function betWindowDollars(bets: readonly SettledBet[], today: string): BetWindows {
+  const totals: BetWindows = { today: 0, last7: 0, last30: 0, allTime: 0 };
+  const start7 = shiftIsoDate(today, -6);
+  const start30 = shiftIsoDate(today, -29);
+  for (const bet of bets) {
+    const profit = betDollars(bet.units, bet.grade, bet.unitDollars);
+    if (profit == null) continue;
+    totals.allTime += profit;
+    if (bet.slateDate > today) continue;
+    if (bet.slateDate === today) totals.today += profit;
+    if (bet.slateDate >= start7) totals.last7 += profit;
+    if (bet.slateDate >= start30) totals.last30 += profit;
+  }
+  return totals;
+}
+
+/** Same inclusive window as the Last 7 days card: today through six days back. */
+export function inLast7Days(slateDate: string, today: string): boolean {
+  return slateDate <= today && slateDate >= shiftIsoDate(today, -6);
+}
+
 export type WinLoss = { wins: number; losses: number };
 
 export type BetRecords = Record<keyof BetWindows, WinLoss>;
 
 export type SettledBetRow = {
+  slateDate: string;
   playerName: string;
   units: number;
+  dollars: number;
   result: "Win" | "Loss" | "Push";
 };
 
@@ -73,6 +115,19 @@ export type PendingBetRow = {
 };
 
 type NamedBet = SettledBet & { playerName: string };
+
+export function resultUnits(units: number, result: "Win" | "Loss" | "Push"): number {
+  if (result === "Loss") return -units;
+  if (result === "Push") return 0;
+  return units;
+}
+
+/** Slate date as M/D with no leading zeros, such as 11/12. */
+export function formatSlateDay(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso;
+  return `${Number(match[2])}/${Number(match[3])}`;
+}
 
 function emptyRecords(): BetRecords {
   return {
@@ -113,17 +168,21 @@ export function formatRecord(wins: number, losses: number): string {
  * Settled bets are wins, losses, and pushes. Pending bets have units and no actual yet.
  * Pending rows are not wins or losses, and betWindowTotals already leaves them out of the units.
  */
-export function betLists(bets: readonly NamedBet[]): { settled: SettledBetRow[]; pending: PendingBetRow[] } {
+export function betLists(bets: readonly NamedBet[], today: string): { settled: SettledBetRow[]; pending: PendingBetRow[] } {
   const ordered = [...bets].sort((a, b) => b.slateDate.localeCompare(a.slateDate) || a.playerName.localeCompare(b.playerName));
   const settled: SettledBetRow[] = [];
   const pending: PendingBetRow[] = [];
   for (const bet of ordered) {
     if (!Number.isFinite(bet.units) || bet.units <= 0) continue;
     if (bet.grade === "win" || bet.grade === "loss" || bet.grade === "push") {
+      if (!inLast7Days(bet.slateDate, today)) continue;
+      const result = bet.grade === "win" ? "Win" : bet.grade === "loss" ? "Loss" : "Push";
       settled.push({
+        slateDate: bet.slateDate,
         playerName: bet.playerName,
         units: bet.units,
-        result: bet.grade === "win" ? "Win" : bet.grade === "loss" ? "Loss" : "Push",
+        dollars: betDollars(bet.units, bet.grade, bet.unitDollars) ?? 0,
+        result,
       });
     } else if (bet.grade === "unresolved") {
       pending.push({ playerName: bet.playerName, units: bet.units });
@@ -154,17 +213,18 @@ function namedBets(db: Database): NamedBet[] {
       gameFinal: game?.status === "final",
     });
     const playerName = db.players.find((item) => idsEqual(item.playerId, row.playerId))?.displayName ?? row.playerId;
-    return [{ slateDate: row.slateDate, units, grade: graded.grade, playerName }];
+    return [{ slateDate: row.slateDate, units, grade: graded.grade, playerName, unitDollars: row.unitDollars }];
   });
 }
 
 /** One row per saved stat that has units. The grade is the existing projection-versus-line rule. */
 export function betsFromDatabase(db: Database): SettledBet[] {
-  return namedBets(db).map(({ slateDate, units, grade }) => ({ slateDate, units, grade }));
+  return namedBets(db).map(({ slateDate, units, grade, unitDollars }) => ({ slateDate, units, grade, unitDollars }));
 }
 
 export type BetTracking = BetWindows & {
   records: BetRecords;
+  dollars: BetWindows;
   settled: SettledBetRow[];
   pending: PendingBetRow[];
 };
@@ -172,11 +232,12 @@ export type BetTracking = BetWindows & {
 /** Totals use the existing window math. The record and lists are for the Bet tracking page. */
 export function betTracking(db: Database, today: string): BetTracking {
   const named = namedBets(db);
-  const bets = named.map(({ slateDate, units, grade }) => ({ slateDate, units, grade }));
-  const lists = betLists(named);
+  const bets = named.map(({ slateDate, units, grade, unitDollars }) => ({ slateDate, units, grade, unitDollars }));
+  const lists = betLists(named, today);
   return {
     ...betWindowTotals(bets, today),
     records: betWindowRecords(bets, today),
+    dollars: betWindowDollars(bets, today),
     settled: lists.settled,
     pending: lists.pending,
   };
@@ -186,7 +247,7 @@ type BetRow = {
   playerId: string;
   gameId: string;
   playerName: string;
-  stats: Record<Stat, { source: string; units?: number | null; grade: Grade }>;
+  stats: Record<Stat, { source: string; units?: number | null; unitDollars?: number | null; grade: Grade }>;
 };
 
 /** Saved bets on this stat whose result is a win, a loss, or a push. */
@@ -197,12 +258,14 @@ export function betPlayers(rows: readonly BetRow[], stat: Stat): BetPlayer[] {
     if (cell.source !== "saved") continue;
     if (cell.units == null || !(cell.units > 0)) continue;
     if (cell.grade !== "win" && cell.grade !== "loss" && cell.grade !== "push") continue;
+    const result = cell.grade === "win" ? "Win" : cell.grade === "loss" ? "Loss" : "Push";
     listed.push({
       playerId: row.playerId,
       gameId: row.gameId,
       playerName: row.playerName,
       units: cell.units,
-      result: cell.grade === "win" ? "Win" : cell.grade === "loss" ? "Loss" : "Push",
+      result,
+      dollars: betDollars(cell.units, cell.grade, cell.unitDollars) ?? 0,
     });
   }
   return listed;
@@ -215,6 +278,15 @@ export function formatUnits(value: number): string {
   if (rounded > 0) return `+${text}`;
   if (rounded < 0) return `−${text}`;
   return "0";
+}
+
+export function formatDollars(value: number): string {
+  const rounded = Object.is(value, -0) ? 0 : Math.round(value * 100) / 100;
+  const abs = Math.abs(rounded);
+  const text = Number.isInteger(abs) ? String(abs) : abs.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  if (rounded > 0) return `+$${text}`;
+  if (rounded < 0) return `−$${text}`;
+  return "$0";
 }
 
 export function formatStake(units: number): string {

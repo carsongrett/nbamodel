@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { buildSlate, CURRENT_SEASON, DEFAULT_SETTINGS, DIMERS_BASELINE_WEIGHT, emptyDatabase, SPORTSLINE_BASELINE_WEIGHT, type Database, type ProjectionInput } from "../lib/engine.ts";
+import { buildSlate, CURRENT_SEASON, DEFAULT_SETTINGS, DIMERS_BASELINE_WEIGHT, emptyDatabase, formulaSettings, SPORTSLINE_BASELINE_WEIGHT, type Database, type ProjectionInput } from "../lib/engine.ts";
 import { loadOutsideProjections, projectionFromStoreRow, projectionInputFromStoreRow, projectionInputToStoreRow, STORE_PAGE_SIZE, type StorePage } from "../lib/store-pages.ts";
 
 const date = "2026-11-04";
@@ -124,7 +124,7 @@ test("projection input columns match the migration", () => {
     recentGap: null,
     minutesGap: 1.25,
     oppReboundsGap: 1.5,
-    sliders: { ...DEFAULT_SETTINGS, dvpReboundsStrength: 3, minRecentGames: 4 },
+    sliders: formulaSettings({ ...DEFAULT_SETTINGS, dvpReboundsStrength: 3, minRecentGames: 4 }),
   };
   const row = projectionInputToStoreRow(input);
   const sql = readFileSync(new URL("../supabase/migrations/20261106120000_projection_inputs.sql", import.meta.url), "utf8");

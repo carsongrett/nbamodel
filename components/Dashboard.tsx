@@ -520,6 +520,18 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                   </label>
                 );
               })}
+              <label className="scale">
+                <span className="scale-top"><b>Dollars per unit</b><b>{scaleText(settings.dollarsPerUnit)}</b></span>
+                <input
+                  type="number"
+                  min={0.01}
+                  step="any"
+                  value={settings.dollarsPerUnit}
+                  aria-label="Dollars per unit"
+                  onChange={(event) => setSettings({ ...settings, dollarsPerUnit: Number(event.target.value) })}
+                />
+                <span className="scale-example">New bets store this size. Bets already saved keep the size on their row.</span>
+              </label>
               <button className="primary" type="submit" disabled={busy}>Save settings</button>
             </form>
           ) : null}

@@ -1,4 +1,4 @@
-import { mergeSettings, type OutsideProjection, type ProjectionInput, type Settings } from "./engine";
+import { formulaSettings, mergeSettings, type FormulaSettings, type OutsideProjection, type ProjectionInput, type Settings } from "./engine";
 
 /** PostgREST returns at most one page per request. The default cap is 1000. */
 export const STORE_PAGE_SIZE = 1000;
@@ -66,7 +66,7 @@ export function projectionInputFromStoreRow(row: Record<string, unknown>): Proje
     recentGap: num(row.recent_gap),
     minutesGap: num(row.minutes_gap),
     oppReboundsGap: num(row.opp_rebounds_gap),
-    sliders: mergeSettings(slidersFromStoreRow(row)),
+    sliders: formulaSettings(mergeSettings(slidersFromStoreRow(row))),
   };
 }
 
@@ -111,7 +111,7 @@ function slidersFromStoreRow(row: Record<string, unknown>): Partial<Settings> {
   };
 }
 
-function sliderColumns(settings: Settings): Record<string, number> {
+function sliderColumns(settings: FormulaSettings): Record<string, number> {
   return {
     dvp_points_strength: settings.dvpPointsStrength,
     dvp_rebounds_strength: settings.dvpReboundsStrength,

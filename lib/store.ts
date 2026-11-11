@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { canonicalizeDatabase, emptyDatabase, mergeSettings, type Actual, type Database, type Dvp, type DvpWindow, type Finding, type Game, type IdMap, type MinutesOverride, type OppRebound, type OutsideProjection, type PaceRow, type Player, type PlayerRate, type PregameStat, type PropLine, type Settings, type Team, type Vegas } from "./engine";
+import { canonicalizeDatabase, DEFAULT_SETTINGS, emptyDatabase, mergeSettings, type Actual, type Database, type Dvp, type DvpWindow, type Finding, type Game, type IdMap, type MinutesOverride, type OppRebound, type OutsideProjection, type PaceRow, type Player, type PlayerRate, type PregameStat, type PropLine, type Settings, type Team, type Vegas } from "./engine";
 import { num, projectionFromStoreRow, projectionInputFromStoreRow, projectionInputToStoreRow, selectAllRows, str } from "./store-pages";
 
 export type StorageMode = "local" | "supabase";
@@ -159,6 +159,7 @@ class SupabaseStore implements Store {
         source: str(row.source),
         sourceTimestamp: str(row.source_timestamp),
         units: num(row.units),
+        unitDollars: num(row.unit_dollars),
       })),
       rates: rates.map((row) => ({
         playerId: String(row.player_id),
@@ -217,6 +218,7 @@ class SupabaseStore implements Store {
         oppReboundsStrength: num(settingRow.opp_rebounds_strength) ?? undefined,
         minRecentGames: num(settingRow.min_recent_games) ?? undefined,
         minRateGames: num(settingRow.min_rate_games) ?? undefined,
+        dollarsPerUnit: num(settingRow.dollars_per_unit) ?? undefined,
       }),
       overrides: overrides.map((row) => ({ playerId: String(row.player_id), gameId: String(row.game_id), minutes: num(row.minutes) ?? 0 })),
       pregame: pregame.map((row) => ({
@@ -233,6 +235,7 @@ class SupabaseStore implements Store {
         overOdds: num(row.over_odds),
         underOdds: num(row.under_odds),
         units: num(row.units),
+        unitDollars: num(row.unit_dollars),
         savedAt: String(row.saved_at),
         sourcesUsed: Array.isArray(row.sources_used) ? row.sources_used as string[] : [],
       })),
@@ -298,10 +301,11 @@ class SupabaseStore implements Store {
       player_id: row.playerId, game_id: row.gameId, source: row.source, season: row.season,
       points: row.points, rebounds: row.rebounds, minutes: row.minutes, source_timestamp: row.sourceTimestamp,
     })), ["player_id", "game_id", "source"]);
-    await this.replaceUnits("prop_lines", db.lines.map((row) => ({
+    await this.replaceBetColumns("prop_lines", db.lines.map((row) => ({
       player_id: row.playerId, game_id: row.gameId, stat: row.stat, season: row.season, line: row.line,
       over_odds: row.overOdds, under_odds: row.underOdds, source: row.source, source_timestamp: row.sourceTimestamp,
       units: row.units ?? null,
+      unit_dollars: row.unitDollars ?? null,
     })), ["player_id", "game_id", "stat"]);
     await this.replace("player_rates", db.rates.map((row: PlayerRate) => ({
       player_id: row.playerId, season: row.season, pts_per_100: row.ptsPer100, pts_per_100_games: row.ptsPer100Games,
@@ -336,15 +340,16 @@ class SupabaseStore implements Store {
     await this.replace("vegas", db.vegas.map((row: Vegas) => ({
       game_id: row.gameId, team_id: row.teamId, season: row.season, spread: row.spread, total: row.total, source_timestamp: row.sourceTimestamp,
     })), ["game_id", "team_id"]);
-    await this.upsert("settings", [settingsRow(db.settings)]);
+    await this.upsertSettings(db.settings);
     await this.replace("overrides", db.overrides.map((row: MinutesOverride) => ({
       player_id: row.playerId, game_id: row.gameId, minutes: row.minutes,
     })), ["player_id", "game_id"]);
-    await this.replaceUnits("pregame", db.pregame.filter((row) => !lockedKeys.has(`${row.playerId}|${row.gameId}`)).map((row) => ({
+    await this.replaceBetColumns("pregame", db.pregame.filter((row) => !lockedKeys.has(`${row.playerId}|${row.gameId}`)).map((row) => ({
       player_id: row.playerId, game_id: row.gameId, stat: row.stat, slate_date: row.slateDate,
       baseline: row.baseline, projection: row.projection, minutes: row.minutes, adjustments: row.adjustments,
       flags: row.flags, line: row.line, over_odds: row.overOdds, under_odds: row.underOdds,
       units: row.units ?? null,
+      unit_dollars: row.unitDollars ?? null,
       saved_at: row.savedAt, sources_used: row.sourcesUsed,
     })), ["player_id", "game_id", "stat"], (row) => !lockedKeys.has(`${row.player_id}|${row.game_id}`));
     await this.replaceProjectionInputs(db, lockedKeys);
@@ -390,22 +395,50 @@ class SupabaseStore implements Store {
     }
   }
 
-  private async replaceUnits(
+  private async upsertSettings(settings: Settings): Promise<void> {
+    const row = settingsRow(settings);
+    try {
+      await this.upsert("settings", [row]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (!message.includes("dollars_per_unit")) throw error;
+      if (settings.dollarsPerUnit !== DEFAULT_SETTINGS.dollarsPerUnit) {
+        throw new Error("Dollars per unit needs a database column. Run supabase/migrations/20261111120000_unit_dollars.sql in the Supabase SQL editor, then save settings again.");
+      }
+      const { dollars_per_unit: _size, ...rest } = row;
+      await this.upsert("settings", [rest]);
+    }
+  }
+
+  private async replaceBetColumns(
     table: string,
     rows: Record<string, unknown>[],
     keys: string[],
     canDelete?: (row: Record<string, unknown>) => boolean,
   ): Promise<void> {
-    const hasUnits = rows.some((row) => row.units != null);
-    try {
-      await this.replace(table, rows, keys, canDelete);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      if (!message.includes("units")) throw error;
-      if (hasUnits) {
-        throw new Error("Bet units need a database column. Run supabase/migrations/20261105180000_bet_units.sql in the Supabase SQL editor, then save the bet again.");
+    let payload = rows;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await this.replace(table, payload, keys, canDelete);
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (message.includes("unit_dollars")) {
+          if (payload.some((row) => row.unit_dollars != null)) {
+            throw new Error("Dollar unit size needs a database column. Run supabase/migrations/20261111120000_unit_dollars.sql in the Supabase SQL editor, then save the bet again.");
+          }
+          payload = payload.map(({ unit_dollars: _size, ...row }) => row);
+          continue;
+        }
+        if (message.includes("units")) {
+          if (payload.some((row) => row.units != null)) {
+            throw new Error("Bet units need a database column. Run supabase/migrations/20261105180000_bet_units.sql in the Supabase SQL editor, then save the bet again.");
+          }
+          payload = payload.map(({ units: _units, ...row }) => row);
+          continue;
+        }
+        throw error;
       }
-      await this.replace(table, rows.map(({ units: _units, ...row }) => row), keys, canDelete);
     }
   }
 
@@ -457,5 +490,6 @@ function settingsRow(settings: Settings): Record<string, unknown> {
     opp_rebounds_strength: settings.oppReboundsStrength,
     min_recent_games: settings.minRecentGames,
     min_rate_games: settings.minRateGames,
+    dollars_per_unit: settings.dollarsPerUnit,
   };
 }

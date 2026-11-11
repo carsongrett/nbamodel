@@ -51,7 +51,9 @@ button:disabled { opacity: 0.55; cursor: wait; }
 .summary span { display: block; color: var(--muted); font-size: 12px; }
 .summary strong { font-variant-numeric: tabular-nums; font-size: 22px; }
 .bet-figures { display: flex; align-items: baseline; gap: 10px; }
-.summary .bet-figures .bet-record { display: inline; color: var(--ink); font-size: 16px; font-weight: 600; }
+.summary .bet-figures .bet-record,
+.summary .bet-figures .bet-dollars { display: inline; color: var(--ink); font-size: 16px; font-weight: 600; }
+.summary .bet-figures .bet-dollars { font-variant-numeric: tabular-nums; }
 .units-up { color: var(--good); }
 .units-down { color: var(--bad); }
 .bet-list { margin-bottom: 14px; }

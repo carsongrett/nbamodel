@@ -25,7 +25,8 @@ export const IMPORT_KINDS = [
 ] as const;
 export type ImportKind = (typeof IMPORT_KINDS)[number];
 
-export type Settings = {
+/** Divisors the projection actually reads. The bet price is not one of them. */
+export type FormulaSettings = {
   dvpPointsStrength: number;
   dvpReboundsStrength: number;
   pacePointsStrength: number;
@@ -37,6 +38,11 @@ export type Settings = {
   oppReboundsStrength: number;
   minRecentGames: number;
   minRateGames: number;
+};
+
+export type Settings = FormulaSettings & {
+  /** Dollars in one unit for a bet saved from now on. Each saved bet keeps its own size. */
+  dollarsPerUnit: number;
 };
 
 /** Active workbook divisors are column C on the model sheet, not the unused column B options. */
@@ -52,7 +58,14 @@ export const DEFAULT_SETTINGS: Settings = {
   oppReboundsStrength: 10,
   minRecentGames: 3,
   minRateGames: 5,
+  dollarsPerUnit: 10,
 };
+
+/** Projection snapshots keep the divisors only. */
+export function formulaSettings(settings: Settings): FormulaSettings {
+  const { dollarsPerUnit: _size, ...formula } = settings;
+  return formula;
+}
 
 export type Team = { teamId: string; name: string };
 export type Player = {
@@ -100,6 +113,8 @@ export type PropLine = {
   sourceTimestamp: string | null;
   /** Units staked with the model. Empty when he did not bet this stat. */
   units?: number | null;
+  /** Dollars in one unit when this bet was saved. Empty when he did not bet. */
+  unitDollars?: number | null;
 };
 export type PlayerRate = {
   playerId: string;
@@ -214,6 +229,8 @@ export type PregameStat = {
   sourcesUsed: string[];
   /** Units staked with the model for this saved stat. Empty when he did not bet. */
   units?: number | null;
+  /** Dollars in one unit when this bet was saved. Empty when he did not bet. */
+  unitDollars?: number | null;
 };
 /**
  * Inputs stored with a saved points or rebounds projection.
@@ -245,7 +262,7 @@ export type ProjectionInput = {
   minutesGap: number | null;
   /** Null for points. Rebounds only, and only when that term was divided. */
   oppReboundsGap: number | null;
-  sliders: Settings;
+  sliders: FormulaSettings;
 };
 export type Database = {
   teams: Team[];
@@ -568,7 +585,7 @@ export type PointsInput = {
   /** Season usage in percent, from Basketball-Reference. Not points per 100 possessions. */
   usgPct?: number | null;
   usgGames?: number | null;
-  strengths: Settings;
+  strengths: FormulaSettings;
   /** Betting line. Recent and minutes subtract the projection baseline, so this does not change the projection. */
   line?: number | null;
 };
@@ -585,7 +602,7 @@ export type ReboundsInput = {
   dvpNote?: string | null;
   paceDiff: number | null;
   oppReboundDiff: number | null;
-  strengths: Settings;
+  strengths: FormulaSettings;
   /** Betting line. Recent and minutes subtract the projection baseline, so this does not change the projection. */
   line?: number | null;
 };
@@ -1380,6 +1397,7 @@ export function importRecords(db: Database, kind: ImportKind, rows: { rowNumber:
         source: (row.values.source ?? "").trim() || null,
         sourceTimestamp: val(stamped),
         units: next.lines.find((item) => item.playerId === player.id && item.gameId === game.id && item.stat === stat)?.units ?? null,
+        unitDollars: next.lines.find((item) => item.playerId === player.id && item.gameId === game.id && item.stat === stat)?.unitDollars ?? null,
       });
     }
     next.lines = take(next.lines, incoming, (r) => `${r.playerId}|${r.gameId}|${r.stat}`);
@@ -1698,6 +1716,7 @@ export function updateSettings(db: Database, patch: Settings): { db: Database; e
     if (key === "minRecentGames" || key === "minRateGames") {
       if (!Number.isInteger(value) || value < 1) return { db, error: `${key} must be a whole number of at least 1.` };
     } else if (value <= 0) {
+      if (key === "dollarsPerUnit") return { db, error: "Dollars per unit must be greater than 0." };
       return { db, error: `${key} must be greater than 0. Use a large strength such as 10000 to turn an adjustment off.` };
     }
     next[key] = value;
@@ -1763,6 +1782,7 @@ export function setPropLine(
     source: "manual",
     sourceTimestamp: savedAt,
     units: prior?.units ?? null,
+    unitDollars: prior?.unitDollars ?? null,
   };
   const withLine = { ...db, lines: upsertByKey(db.lines, [row], (item) => `${item.playerId}|${item.gameId}|${item.stat}`).rows };
   return rememberPregame(withLine, playerId, gameId, stat, savedAt);
@@ -1786,8 +1806,8 @@ export function setBetUnits(
     return {
       db: {
         ...db,
-        lines: db.lines.map((row) => sameLine(row) ? { ...row, units: null } : row),
-        pregame: db.pregame.map((row) => sameSaved(row) ? { ...row, units: null } : row),
+        lines: db.lines.map((row) => sameLine(row) ? { ...row, units: null, unitDollars: null } : row),
+        pregame: db.pregame.map((row) => sameSaved(row) ? { ...row, units: null, unitDollars: null } : row),
       },
     };
   }
@@ -1801,12 +1821,14 @@ export function setBetUnits(
   const raw = stat === "points" ? evaled.points : stat === "rebounds" ? evaled.rebounds : evaled.combined;
   const pick = edgeAndPick(raw.projection, line.line).pick;
   if (pick !== "over" && pick !== "under") return { db, error: "The projection has to be above or below the line." };
-  const withLine = { ...db, lines: db.lines.map((row) => sameLine(row) ? { ...row, units } : row) };
+  const saved = db.pregame.find(sameSaved);
+  const unitDollars = stakeSize(line.unitDollars ?? saved?.unitDollars, db.settings);
+  const withLine = { ...db, lines: db.lines.map((row) => sameLine(row) ? { ...row, units, unitDollars } : row) };
   if (withLine.pregame.some(sameSaved)) {
     return {
       db: {
         ...withLine,
-        pregame: withLine.pregame.map((row) => sameSaved(row) ? { ...row, units } : row),
+        pregame: withLine.pregame.map((row) => sameSaved(row) ? { ...row, units, unitDollars } : row),
       },
     };
   }
@@ -1840,6 +1862,14 @@ type Eval = {
   stamps: { label: string; timestamp: string | null }[];
   captured: ProjectionCapture;
 };
+
+/** A bet that already has a size keeps it. A new bet takes the current dollars-per-unit setting. */
+function stakeSize(existing: number | null | undefined, settings: Settings): number {
+  if (typeof existing === "number" && Number.isFinite(existing) && existing > 0) return existing;
+  const current = settings.dollarsPerUnit;
+  if (typeof current === "number" && Number.isFinite(current) && current > 0) return current;
+  return DEFAULT_SETTINGS.dollarsPerUnit;
+}
 
 function finiteNumber(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -2032,7 +2062,7 @@ function toProjectionInput(
     recentGap: dividedGap(projection, "recent"),
     minutesGap: dividedGap(projection, "minutes"),
     oppReboundsGap: points ? null : dividedGap(projection, "opp_rebounds"),
-    sliders: { ...settings },
+    sliders: formulaSettings(settings),
   };
 }
 
@@ -2051,6 +2081,7 @@ function toPregame(playerId: string, gameId: string, date: string, stat: Stat, p
     overOdds: line?.overOdds ?? null,
     underOdds: line?.underOdds ?? null,
     units: line?.units ?? null,
+    unitDollars: line?.unitDollars ?? null,
     savedAt,
     sourcesUsed: projection.sourcesUsed,
   };
@@ -2139,6 +2170,7 @@ export type SlateStat = {
   overOdds: number | null;
   underOdds: number | null;
   units: number | null;
+  unitDollars: number | null;
   edge: number | null;
   pick: PickSide | null;
   actual: number | null;
@@ -2235,6 +2267,7 @@ function viewStat(
       overOdds: null,
       underOdds: null,
       units: null,
+      unitDollars: null,
       edge: null,
       pick: null,
       actual: actualNumber,
@@ -2258,6 +2291,7 @@ function viewStat(
       overOdds: saved.overOdds,
       underOdds: saved.underOdds,
       units: saved.units ?? null,
+      unitDollars: saved.unitDollars ?? null,
       edge: edge.edge,
       pick: edge.pick,
       actual: actualNumber,
@@ -2282,6 +2316,7 @@ function viewStat(
     overOdds: line?.overOdds ?? null,
     underOdds: line?.underOdds ?? null,
     units: line?.units ?? null,
+    unitDollars: line?.unitDollars ?? null,
     edge: edge.edge,
     pick: edge.pick,
     actual: actualNumber,

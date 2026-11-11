@@ -9,6 +9,7 @@ import {
   buildSlate,
   edgeAndPick,
   emptyDatabase,
+  formulaSettings,
   gradeResult,
   idsEqual,
   favoredTeamPoints,
@@ -334,7 +335,9 @@ test("new default divisors apply when nothing was saved, and a saved divisor sta
   assert.equal(DEFAULT_SETTINGS.dvpReboundsStrength, 2);
   assert.equal(DEFAULT_SETTINGS.minutesPointsStrength, 3);
   assert.equal(DEFAULT_SETTINGS.minutesReboundsStrength, 2);
+  assert.equal(DEFAULT_SETTINGS.dollarsPerUnit, 10);
   assert.deepEqual(mergeSettings(null), DEFAULT_SETTINGS);
+  assert.equal(mergeSettings({ dvpPointsStrength: 4 }).dollarsPerUnit, 10);
   const saved = mergeSettings({
     dvpPointsStrength: 2.5,
     dvpReboundsStrength: 2.5,
@@ -368,6 +371,10 @@ test("new default divisors apply when nothing was saved, and a saved divisor sta
   assert.equal(rebounds.adjustments.find((row) => row.key === "dvp")?.delta, 1 / 2);
   assert.equal(rebounds.adjustments.find((row) => row.key === "minutes")?.delta, (0.2 * 30 - 8) / 2);
   assert.equal(rebounds.adjustments.find((row) => row.key === "opp_rebounds")?.delta, 1 / 10);
+  assert.equal(
+    basePoints({ strengths: { ...DEFAULT_SETTINGS, dollarsPerUnit: 25 } }).projection,
+    basePoints({ strengths: DEFAULT_SETTINGS }).projection,
+  );
 });
 
 test("workbook input weights", () => {
@@ -840,6 +847,8 @@ test("chicago date and settings validation", () => {
   assert.equal(chicagoToday(new Date("2026-11-01T18:00:00Z")), "2026-11-01");
   const bad = updateSettings(emptyDatabase(), { ...DEFAULT_SETTINGS, dvpPointsStrength: 0 });
   assert.match(bad.error ?? "", /greater than 0/);
+  const price = updateSettings(emptyDatabase(), { ...DEFAULT_SETTINGS, dollarsPerUnit: 0 });
+  assert.match(price.error ?? "", /Dollars per unit must be greater than 0/);
   const cleared = setMinutesOverride(emptyDatabase(), "missing", "missing", 20);
   assert.match(cleared.error ?? "", /Unknown player/);
 });
@@ -970,7 +979,8 @@ test("a projections save stores pre-division gaps and that day's sliders", () =>
   assert.ok(sameNumber(lukaPoints.recentGap ?? NaN, pointsRecentGap));
   assert.ok(sameNumber(lukaPoints.minutesGap ?? NaN, pointsMinutesGap));
   assert.equal(lukaPoints.oppReboundsGap, null);
-  assert.deepEqual(lukaPoints.sliders, settings);
+  assert.deepEqual(lukaPoints.sliders, formulaSettings(settings));
+  assert.equal("dollarsPerUnit" in lukaPoints.sliders, false);
 
   assert.equal(lukaRebounds.sportsline, 8);
   assert.equal(lukaRebounds.dimers, 6);
@@ -986,7 +996,7 @@ test("a projections save stores pre-division gaps and that day's sliders", () =>
   assert.ok(sameNumber(lukaRebounds.recentGap ?? NaN, reboundsRecentGap));
   assert.ok(sameNumber(lukaRebounds.minutesGap ?? NaN, reboundsMinutesGap));
   assert.ok(sameNumber(lukaRebounds.oppReboundsGap ?? NaN, 1.5));
-  assert.deepEqual(lukaRebounds.sliders, settings);
+  assert.deepEqual(lukaRebounds.sliders, formulaSettings(settings));
 
   const savedPoints = ran.db.pregame.find((row) => row.playerId === luka && row.stat === "points");
   const savedRebounds = ran.db.pregame.find((row) => row.playerId === luka && row.stat === "rebounds");

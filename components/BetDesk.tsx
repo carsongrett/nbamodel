@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatRecord, formatStake, formatUnits, type BetTracking, type BetWindows } from "../lib/bets";
+import { formatDollars, formatRecord, formatSlateDay, formatStake, formatUnits, resultUnits, type BetTracking, type BetWindows } from "../lib/bets";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
 
@@ -12,9 +12,14 @@ const WINDOWS: { key: keyof BetWindows; label: string }[] = [
   { key: "allTime", label: "All time" },
 ];
 
+function isWindow(value: BetTracking["dollars"] | undefined): value is BetTracking["dollars"] {
+  return value != null && value.today != null && value.last7 != null && value.last30 != null && value.allTime != null;
+}
+
 function isTracking(body: Partial<BetTracking> & { ok?: boolean }): body is BetTracking {
   return body.today != null && body.last7 != null && body.last30 != null && body.allTime != null
     && body.records != null
+    && isWindow(body.dollars)
     && Array.isArray(body.settled)
     && Array.isArray(body.pending);
 }
@@ -66,13 +71,16 @@ export default function BetDesk({ authConfigured }: { authConfigured: boolean })
       <section className="summary" aria-label="Bet tracking">
         {WINDOWS.map((item) => {
           const value = totals ? totals[item.key] : null;
+          const dollars = totals ? totals.dollars[item.key] : null;
           const record = totals?.records[item.key];
           const direction = value == null ? "" : value > 0 ? "units-up" : value < 0 ? "units-down" : "";
+          const dollarDirection = dollars == null ? "" : dollars > 0 ? "units-up" : dollars < 0 ? "units-down" : "";
           return (
             <div key={item.key}>
               <span>{item.label}</span>
               <div className="bet-figures">
                 <strong className={direction}>{value == null ? "—" : formatUnits(value)}</strong>
+                <span className={`bet-dollars ${dollarDirection}`}>{dollars == null ? "—" : formatDollars(dollars)}</span>
                 <span className="bet-record">{record == null ? "—" : formatRecord(record.wins, record.losses)}</span>
               </div>
             </div>
@@ -86,16 +94,20 @@ export default function BetDesk({ authConfigured }: { authConfigured: boolean })
             <table>
               <thead>
                 <tr>
+                  <th>Date</th>
                   <th>Player</th>
                   <th className="num">Units</th>
+                  <th className="num">Dollars</th>
                   <th>Result</th>
                 </tr>
               </thead>
               <tbody>
                 {totals.settled.map((bet, index) => (
-                  <tr key={`${bet.playerName}|${bet.units}|${bet.result}|${index}`}>
+                  <tr key={`${bet.slateDate}|${bet.playerName}|${bet.units}|${bet.result}|${index}`}>
+                    <td>{formatSlateDay(bet.slateDate)}</td>
                     <td>{bet.playerName}</td>
-                    <td className="num">{formatStake(bet.units)}</td>
+                    <td className="num">{formatUnits(resultUnits(bet.units, bet.result))}</td>
+                    <td className="num">{formatDollars(bet.dollars)}</td>
                     <td><span className={`grade ${bet.result.toLowerCase()}`}>{bet.result}</span></td>
                   </tr>
                 ))}

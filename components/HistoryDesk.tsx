@@ -12,7 +12,7 @@ import {
   type HistoryErrorWindows,
   type HistoryResultFilter,
 } from "../lib/history";
-import { betPlayers, formatStake } from "../lib/bets";
+import { betDollars, betPlayers, formatDollars, formatStake } from "../lib/bets";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
 import Trace from "./Trace";
@@ -307,6 +307,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                       <tr>
                         <th>Player</th>
                         <th className="num">Units</th>
+                        <th className="num">Dollars</th>
                         <th>Result</th>
                       </tr>
                     </thead>
@@ -315,6 +316,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                         <tr key={`${player.playerId}|${player.gameId}`}>
                           <td>{player.playerName}</td>
                           <td className="num">{formatStake(player.units)}</td>
+                          <td className="num">{formatDollars(player.dollars)}</td>
                           <td><span className={`grade ${player.result.toLowerCase()}`}>{player.result}</span></td>
                         </tr>
                       ))}
@@ -347,6 +349,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                         <th className="num">Actual</th>
                         <th className="num">Error</th>
                         <th className="num">Units</th>
+                        <th className="num">Dollars</th>
                         <th>Result</th>
                       </tr>
                     </thead>
@@ -354,6 +357,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                       {gameRows.map((row) => {
                         const cell = row.stats[stat];
                         const archived = cell.source === "saved";
+                        const dollars = archived && cell.units != null ? betDollars(cell.units, cell.grade, cell.unitDollars) : null;
                         return (
                           <tr key={`${row.playerId}|${row.gameId}`}>
                             <td>
@@ -370,6 +374,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                             <td className="num">{fmt(cell.actual, 1)}</td>
                             <td className="num">{archived ? fmt(cell.error) : "—"}</td>
                             <td className="num">{cell.units != null && cell.units > 0 ? formatStake(cell.units) : "—"}</td>
+                            <td className="num">{dollars == null ? "—" : formatDollars(dollars)}</td>
                             <td><span className={`grade ${archived ? cell.grade : "ungraded"}`}>{historyResultText(cell)}</span></td>
                           </tr>
                         );

@@ -76,6 +76,7 @@ export function applyBettingProsProbe(db: Database, date: string, probe: ProbeRe
       source: "bettingpros",
       sourceTimestamp: retrievedAt,
       units: prior?.units ?? null,
+      unitDollars: prior?.unitDollars ?? null,
     };
     lines = upsertByKey(lines, [line], (row) => `${row.playerId}|${row.gameId}|${row.stat}`).rows;
     stored++;
