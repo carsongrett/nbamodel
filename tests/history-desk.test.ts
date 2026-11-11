@@ -45,6 +45,20 @@ test("History game heading toggles player rows the way Today does", () => {
   assert.match(historyGame, /<th>Result<\/th>/);
 });
 
+test("Adjustment settings starts closed and uses the game toggle", () => {
+  const panel = between(today, "<h2>Research</h2>", "<h2>Import</h2>");
+  assert.match(panel, /<details className="game">/);
+  assert.match(panel, /<summary>/);
+  assert.match(panel, /<span className="player">Adjustment settings<\/span>/);
+  assert.doesNotMatch(panel, /<details[^>]*\sopen[\s=>]/);
+  assert.doesNotMatch(panel, /<h2>Adjustment settings<\/h2>/);
+  assert.match(panel, /<form className="settings"/);
+  assert.match(panel, /SETTING_FIELDS\.map/);
+  assert.match(panel, /Save settings/);
+  assert.match(today, /label: "DvP points"/);
+  assert.match(today, /label: "Minimum rate-sample games"/);
+});
+
 test("History keeps the player name and position and hides the id", () => {
   const cell = between(history, '<div className="player">{row.playerName}</div>', "</td>");
   assert.match(cell, /<div className="meta">\{row\.position\}<\/div>/);

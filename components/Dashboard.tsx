@@ -497,8 +497,10 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
           )) : <p>No findings for this date. Research stays empty until a configured provider returns some.</p>}
         </section>
 
-        <section className="card">
-          <h2>Adjustment settings</h2>
+        <details className="game">
+          <summary>
+            <span className="player">Adjustment settings</span>
+          </summary>
           {settings ? (
             <form className="settings" onSubmit={(event) => { event.preventDefault(); void put("/api/settings", { settings }, "Saving settings…"); }}>
               {SETTING_FIELDS.map((field) => {
@@ -535,7 +537,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
               <button className="primary" type="submit" disabled={busy}>Save settings</button>
             </form>
           ) : null}
-        </section>
+        </details>
 
         <section className="card">
           <h2>Import</h2>

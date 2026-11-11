@@ -96,6 +96,7 @@ button:disabled { opacity: 0.55; cursor: wait; }
   align-items: baseline;
   padding: 12px 14px;
 }
+.game > .settings { padding: 4px 14px 14px; }
 .game > summary::-webkit-details-marker { display: none; }
 .game > summary::marker { content: ""; }
 .game-time {
