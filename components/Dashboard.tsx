@@ -4,17 +4,21 @@ import { useEffect, useMemo, useState } from "react";
 import type { Settings, SlateGame, SlateView, Stat } from "../lib/engine";
 import { formatStake } from "../lib/bets";
 import { highestDeltas } from "../lib/highest-deltas";
+import { homeworkRows, type HomeworkLog } from "../lib/homework";
 import { noteForPlayer, type LineupTeam } from "../lib/sources/rotowire-lineups";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
+import HomeworkPanel from "./HomeworkPanel";
 import Trace from "./Trace";
+
+type Board = SlateView & { priorGames?: HomeworkLog[] };
 
 type Payload = {
   ok?: boolean;
   error?: string;
   message?: string;
   messages?: { level: "error" | "info"; playerId: string | null; message: string }[];
-  slate?: SlateView;
+  slate?: Board;
   import?: { errors: { row: number; message: string }[]; warnings: string[] } | null;
 };
 
@@ -57,11 +61,6 @@ function settingsForSliders(settings: Settings): Settings {
   }
   return next;
 }
-
-const KINDS = [
-  "projections", "lines", "player_rates", "actuals", "players", "games", "teams",
-  "dvp", "pace", "opp_rebounds", "vegas", "id_map",
-];
 
 function slateLabel(iso: string): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -141,11 +140,9 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   const [status, setStatus] = useState("Loading the slate.");
   const [busy, setBusy] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [adapter, setAdapter] = useState<"csv" | "json">("csv");
-  const [kind, setKind] = useState("projections");
-  const [importText, setImportText] = useState("");
   const [aboutOpen, setAboutOpen] = useState(false);
   const [lineupTeams, setLineupTeams] = useState<LineupTeam[] | null>(null);
+  const [pendingRun, setPendingRun] = useState<{ label: string; url: string; pending: string } | null>(null);
 
   useEffect(() => {
     if (window.location.hash === "#about") setAboutOpen(true);
@@ -203,6 +200,10 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
 
   function put(url: string, body: Record<string, unknown>, pending: string) {
     return post(url, body, pending, "PUT");
+  }
+
+  function askToRun(label: string, url: string, pending: string) {
+    setPendingRun({ label, url, pending });
   }
 
   async function checkLineups() {
@@ -269,11 +270,25 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
     }),
     teamId,
   ), [slate, stat, teamId]);
-
-  async function readFile(file: File | undefined) {
-    if (!file) return;
-    setImportText(await file.text());
-  }
+  const homework = useMemo(() => homeworkRows({
+    date,
+    teamId,
+    lineups: lineupTeams,
+    logs: slate?.priorGames ?? [],
+    rows: (slate?.rows ?? []).flatMap((row) => (["points", "rebounds"] as const).map((statId) => ({
+      playerId: row.playerId,
+      gameId: row.gameId,
+      playerName: row.playerName,
+      teamId: row.teamId,
+      opponentId: row.opponentId,
+      position: row.position,
+      stat: statId,
+      projection: row.stats[statId].projection,
+      line: row.stats[statId].line,
+      edge: row.stats[statId].edge,
+      minutesUsed: row.minutesUsed,
+    }))),
+  }), [date, lineupTeams, slate, teamId]);
 
   return (
     <main className="shell">
@@ -306,8 +321,8 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
             {STATS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
         </label>
-        <button className="primary" type="button" disabled={busy} onClick={() => void post("/api/projections", {}, "Loading projections…")}>Projections</button>
-        <button className="secondary" type="button" disabled={busy} onClick={() => void post("/api/consensus", {}, "Loading lines…")}>Lines</button>
+        <button className="primary" type="button" disabled={busy} onClick={() => askToRun("Projections", "/api/projections", "Loading projections…")}>Projections</button>
+        <button className="secondary" type="button" disabled={busy} onClick={() => askToRun("Lines", "/api/consensus", "Loading lines…")}>Lines</button>
         <button className="secondary" type="button" disabled={busy} onClick={() => void checkLineups()}>Injury/lineup check</button>
         <button className="ghost" type="button" disabled={busy} onClick={() => void post("/api/research", {}, "Requesting research…")}>Research Slate</button>
       </div>
@@ -327,6 +342,8 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
           </ul>
         ) : null}
       </section>
+
+      <HomeworkPanel rows={homework} />
 
       <div className="game-list">
         {games.length === 0 ? (
@@ -538,32 +555,22 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
             </form>
           ) : null}
         </details>
-
-        <section className="card">
-          <h2>Import</h2>
-          <p className="sub">CSV and JSON use the same columns. Rows are matched on ids. Importing the same record again updates it.</p>
-          <div className="row">
-            <label>
-              Adapter
-              <select value={adapter} onChange={(event) => setAdapter(event.target.value as "csv" | "json")}>
-                <option value="csv">CSV</option>
-                <option value="json">JSON</option>
-              </select>
-            </label>
-            <label>
-              Kind
-              <select value={kind} onChange={(event) => setKind(event.target.value)}>
-                {KINDS.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </label>
-            <label>
-              File
-              <input type="file" accept=".csv,.json,text/csv,application/json" onChange={(event) => void readFile(event.target.files?.[0])} />
-            </label>
-            <button className="primary" type="button" disabled={busy || !importText} onClick={() => void post("/api/import", { adapter, kind, text: importText }, "Importing…")}>Import file</button>
-          </div>
-        </section>
       </div>
+      {pendingRun ? (
+        <div className="about-back">
+          <div className="card run-confirm" role="dialog" aria-modal="true" aria-labelledby="run-confirm-title">
+            <h2 id="run-confirm-title">Run {pendingRun.label}?</h2>
+            <div className="row">
+              <button className="ghost" type="button" onClick={() => setPendingRun(null)}>Cancel</button>
+              <button className="primary" type="button" onClick={() => {
+                const next = pendingRun;
+                setPendingRun(null);
+                void post(next.url, {}, next.pending);
+              }}>{pendingRun.label}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {aboutOpen ? <AboutDesk onClose={() => setAboutOpen(false)} /> : null}
     </main>
   );

@@ -101,6 +101,8 @@ test("lineup notes follow the five, the status, and the injury tag", () => {
     "Nikola Jokić",
     "Karl-Anthony Towns",
   ]);
+  assert.equal(teams[0]?.players.find((player) => player.name === "Tyrese Maxey")?.position, "PG");
+  assert.equal(teams[0]?.players.find((player) => player.name === "Dominick Barlow")?.position, "C");
   assert.equal(noteForPlayer(teams, "PHI", "Tyrese Maxey"), "Starting · confirmed");
   assert.equal(noteForPlayer(teams, "PHI", "Nikola Jokic"), "Starting · confirmed");
   assert.equal(noteForPlayer(teams, "PHI", "Karl Anthony Towns"), "Starting · confirmed");

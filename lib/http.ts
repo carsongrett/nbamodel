@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildSlate, chicagoToday, type Database } from "./engine";
+import { priorGames } from "./homework";
 import { researchAvailability } from "./research";
 import { bettingProsAvailability } from "./sources/bettingpros";
 import { getStore, storageMessage } from "./store";
@@ -28,7 +29,7 @@ export function slatePayload(db: Database, date: string) {
     researchMessage: research.message,
     bettingProsState: bettingPros.state,
     bettingProsMessage: bettingPros.message,
-    slate: buildSlate(db, date),
+    slate: { ...buildSlate(db, date), priorGames: priorGames(db, date) },
   };
 }
 

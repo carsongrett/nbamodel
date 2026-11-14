@@ -46,7 +46,7 @@ test("History game heading toggles player rows the way Today does", () => {
 });
 
 test("Adjustment settings starts closed and uses the game toggle", () => {
-  const panel = between(today, "<h2>Research</h2>", "<h2>Import</h2>");
+  const panel = between(today, "<h2>Research</h2>", "aboutOpen ? <AboutDesk");
   assert.match(panel, /<details className="game">/);
   assert.match(panel, /<summary>/);
   assert.match(panel, /<span className="player">Adjustment settings<\/span>/);

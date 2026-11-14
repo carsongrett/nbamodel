@@ -9,6 +9,8 @@ export type LineupPlayer = {
   name: string;
   role: "starter" | "bench";
   injury: LineupInjury | null;
+  /** Spot printed on the public lineup row. Empty when that row has none. */
+  position: string | null;
 };
 
 export type LineupTeam = {
@@ -88,7 +90,8 @@ function playersIn(body: string, role: LineupPlayer["role"]): LineupPlayer[] {
     const name = decode((title || anchor[2]).replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
     if (!name) continue;
     const tag = /class="lineup__inj"[^>]*>([^<]*)</i.exec(item)?.[1] ?? "";
-    players.push({ name, role, injury: injuryWord(tag) });
+    const spot = decode(/class="lineup__pos"[^>]*>([^<]*)</i.exec(item)?.[1] ?? "").replace(/\s+/g, " ").trim();
+    players.push({ name, role, injury: injuryWord(tag), position: spot || null });
   }
   return players;
 }
@@ -113,7 +116,12 @@ function teamList(block: string, side: "is-visit" | "is-home", abbr: string | un
     }
     const starter = existing.role === "starter" ? existing : player.role === "starter" ? player : existing;
     const other = starter === existing ? player : existing;
-    players.set(key, { name: starter.name, role: starter.role, injury: starter.injury ?? other.injury });
+    players.set(key, {
+      name: starter.name,
+      role: starter.role,
+      injury: starter.injury ?? other.injury,
+      position: starter.position ?? other.position,
+    });
   }
   if (players.size === 0) return null;
   return {
@@ -159,14 +167,20 @@ function matchedPlayer(players: LineupPlayer[], playerName: string): LineupPlaye
   return loose.length === 1 ? loose[0] : null;
 }
 
-export function noteForPlayer(teams: LineupTeam[], teamId: string, playerName: string): string | null {
+export function lineupPlayer(teams: LineupTeam[], teamId: string, playerName: string): { team: LineupTeam; player: LineupPlayer } | null {
   const canonical = canonicalTeam(teamId) ?? teamId.trim().toUpperCase();
   const team = teams.find((item) => item.teamId === canonical);
   if (!team) return null;
   const player = matchedPlayer(team.players, playerName);
   if (!player) return null;
-  const base = player.role === "starter" ? (team.confirmed ? "Starting · confirmed" : "Starting") : "Bench";
-  return player.injury ? `${base} · ${player.injury}` : base;
+  return { team, player };
+}
+
+export function noteForPlayer(teams: LineupTeam[], teamId: string, playerName: string): string | null {
+  const found = lineupPlayer(teams, teamId, playerName);
+  if (!found) return null;
+  const base = found.player.role === "starter" ? (found.team.confirmed ? "Starting · confirmed" : "Starting") : "Bench";
+  return found.player.injury ? `${base} · ${found.player.injury}` : base;
 }
 
 export type LineupFetch = (
