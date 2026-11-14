@@ -92,9 +92,10 @@ function numText(value: number): string {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
-/** Whole minutes. A half rounds up. */
+/** Whole minutes from the tenth already shown. A half rounds up. */
 function minuteText(value: number): string {
-  return String(Math.round(value));
+  const tenth = Math.round(value * 10) / 10;
+  return String(Math.round(tenth));
 }
 
 function splitRole(note: string | null): { role: string | null; injury: string | null } {
