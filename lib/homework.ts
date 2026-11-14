@@ -1,6 +1,5 @@
-import { canonicalizeDatabase, type Database } from "./engine";
-import { lineupNameKey, lineupPlayer, noteForPlayer, type LineupTeam } from "./sources/rotowire-lineups";
-import { canonicalTeam, shiftDate } from "./sources/teams";
+import { canonicalizeDatabase, type Database, type SlateRow } from "./engine";
+import { noteForPlayer, type LineupTeam } from "./sources/rotowire-lineups";
 
 export type HomeworkStat = "points" | "rebounds";
 
@@ -50,15 +49,8 @@ export type HomeworkRow = {
 };
 
 const INJURY_WORDS = ["Questionable", "Probable", "Doubtful", "Out", "Out for season"];
-const SUFFIX = /^(jr|sr|ii|iii|iv|v)$/i;
-const MINUTE_GAMES = 3;
-const MINUTE_GAP = 2;
-const USUAL_START_GAMES = 3;
 
-/**
- * Stored results before the slate date. Minutes stay empty when that game was saved without them,
- * and the homework sentence then skips the 30-day minute comparison.
- */
+/** Stored results before the slate date. Minutes stay empty when that game was saved without them. */
 export function priorGames(db: Database, date: string): HomeworkLog[] {
   const canon = canonicalizeDatabase(db);
   const gameDate = new Map(canon.games.map((game) => [game.gameId, game.gameDate]));
@@ -100,30 +92,12 @@ function numText(value: number): string {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
-function shortName(name: string): string {
-  const parts = name.replace(/\./g, "").split(/\s+/).filter(Boolean);
-  while (parts.length > 1 && SUFFIX.test(parts[parts.length - 1] ?? "")) parts.pop();
-  return parts[parts.length - 1] ?? name;
-}
-
 function splitRole(note: string | null): { role: string | null; injury: string | null } {
   if (!note) return { role: null, injury: null };
   const parts = note.split(" · ");
   const injury = parts.find((part) => INJURY_WORDS.includes(part)) ?? null;
   const role = parts.filter((part) => !INJURY_WORDS.includes(part)).join(" · ") || null;
   return { role, injury };
-}
-
-function sameSpot(starter: string, other: string): boolean {
-  const a = starter.trim().toUpperCase();
-  const b = other.trim().toUpperCase();
-  if (!a || !b) return false;
-  if (a === b) return true;
-  if (b === "G") return a === "PG" || a === "SG" || a === "G";
-  if (b === "F") return a === "SF" || a === "PF" || a === "F";
-  if (a === "G") return b === "PG" || b === "SG";
-  if (a === "F") return b === "SF" || b === "PF";
-  return false;
 }
 
 function lastFive(logs: readonly HomeworkLog[], playerId: string, date: string, stat: HomeworkStat): string | null {
@@ -140,92 +114,28 @@ function lastFive(logs: readonly HomeworkLog[], playerId: string, date: string, 
   return `${minutes}${label} ${values}`;
 }
 
-function recentProduction(logs: readonly HomeworkLog[], playerId: string, date: string): { games: number; average: number } {
-  const start = shiftDate(date, -30);
-  const played = logs.filter((log) =>
-    log.playerId === playerId
-    && log.date >= start
-    && log.date < date
-    && finite(log.points)
-    && finite(log.rebounds),
-  );
-  if (played.length === 0) return { games: 0, average: 0 };
-  const total = played.reduce((sum, log) => sum + (log.points as number) + (log.rebounds as number), 0);
-  return { games: played.length, average: total / played.length };
-}
-
-function playerIdFor(logs: readonly HomeworkLog[], teamId: string, name: string): string | null {
-  const key = lineupNameKey(name);
-  const ids = new Set(logs.filter((log) => log.teamId === teamId && lineupNameKey(log.playerName) === key).map((log) => log.playerId));
-  if (ids.size !== 1) return null;
-  return [...ids][0] ?? null;
-}
-
-function minutesClause(logs: readonly HomeworkLog[], playerId: string, date: string, minutesUsed: number | null): string | null {
-  if (!finite(minutesUsed)) return null;
-  const start = shiftDate(date, -30);
-  const played = logs.filter((log) => log.playerId === playerId && log.date >= start && log.date < date && finite(log.minutes));
-  if (played.length < MINUTE_GAMES) return null;
-  const average = played.reduce((sum, log) => sum + (log.minutes as number), 0) / played.length;
-  if (Math.abs(minutesUsed - average) < MINUTE_GAP) return null;
-  return `Expect ${numText(minutesUsed)} min vs ${numText(average)} min over the last 30 days.`;
-}
-
-function replacementSentence(
+function storyNote(
+  stories: readonly { playerId: string; gameId: string; stat: HomeworkStat; text: string }[] | undefined,
   row: HomeworkCandidate,
-  date: string,
-  logs: readonly HomeworkLog[],
-  lineups: readonly LineupTeam[] | null,
-  roster: ReadonlyMap<string, string>,
 ): string | null {
-  if (!lineups) return null;
-  const found = lineupPlayer([...lineups], row.teamId, row.playerName);
-  if (!found || found.player.role !== "starter" || !row.position.trim()) return null;
-  const teamKey = canonicalTeam(row.teamId) ?? row.teamId.trim().toUpperCase();
-  const selfKey = lineupNameKey(row.playerName);
-  const starters = found.team.players.filter((player) => player.role === "starter");
-  const outs = found.team.players.filter((player) =>
-    player.role !== "starter"
-    && (player.injury === "Out" || player.injury === "Out for season")
-    && lineupNameKey(player.name) !== selfKey,
-  );
-  const changes: { name: string; injury: "Out" | "Out for season" }[] = [];
-  for (const out of outs) {
-    const storedId = playerIdFor(logs, teamKey, out.name);
-    const storedPos = storedId ? logs.find((log) => log.playerId === storedId)?.position ?? null : null;
-    const outSpot = (out.position || storedPos || "").trim();
-    if (!outSpot || !sameSpot(row.position, outSpot)) continue;
-    const blocked = starters.some((player) => {
-      if (lineupNameKey(player.name) === selfKey) return false;
-      const pos = roster.get(`${teamKey}|${lineupNameKey(player.name)}`) || player.position || "";
-      if (!pos.trim()) return true;
-      return sameSpot(pos, outSpot);
-    });
-    if (blocked || !storedId) continue;
-    const replaced = recentProduction(logs, storedId, date);
-    if (replaced.games < 1) continue;
-    const current = recentProduction(logs, row.playerId, date);
-    if (current.games >= USUAL_START_GAMES && current.average >= replaced.average) continue;
-    changes.push({ name: out.name, injury: out.injury === "Out for season" ? "Out for season" : "Out" });
-  }
-  if (changes.length !== 1) return null;
-  const change = changes[0];
-  const word = change.injury === "Out for season" ? "out for season" : "out";
-  return `${shortName(change.name)} ${word}. ${shortName(row.playerName)} starts in his place.`;
+  const text = stories?.find((story) => story.playerId === row.playerId && story.gameId === row.gameId && story.stat === row.stat)?.text.trim() ?? "";
+  return text || null;
 }
 
-function homeworkNote(
-  row: HomeworkCandidate,
-  date: string,
-  logs: readonly HomeworkLog[],
-  lineups: readonly LineupTeam[] | null,
-  roster: ReadonlyMap<string, string>,
-): string | null {
-  const parts = [
-    replacementSentence(row, date, logs, lineups, roster),
-    minutesClause(logs, row.playerId, date, row.minutesUsed),
-  ].filter((part): part is string => Boolean(part));
-  return parts.length ? parts.join(" ") : null;
+export function candidatesFromSlate(rows: readonly SlateRow[]): HomeworkCandidate[] {
+  return rows.flatMap((row) => (["points", "rebounds"] as const).map((stat) => ({
+    playerId: row.playerId,
+    gameId: row.gameId,
+    playerName: row.playerName,
+    teamId: row.teamId,
+    opponentId: row.opponentId,
+    position: row.position,
+    stat,
+    projection: row.stats[stat].projection,
+    line: row.stats[stat].line,
+    edge: row.stats[stat].edge,
+    minutesUsed: row.minutesUsed,
+  })));
 }
 
 /** Largest points and rebounds gaps together. Eight rows. The board edge is the headline. */
@@ -235,14 +145,10 @@ export function homeworkRows(input: {
   rows: readonly HomeworkCandidate[];
   logs: readonly HomeworkLog[];
   lineups: readonly LineupTeam[] | null;
+  stories?: readonly { playerId: string; gameId: string; stat: HomeworkStat; text: string }[];
   limit?: number;
 }): HomeworkRow[] {
   const teamId = input.teamId ?? "";
-  const roster = new Map<string, string>();
-  for (const row of input.rows) {
-    const key = `${canonicalTeam(row.teamId) ?? row.teamId}|${lineupNameKey(row.playerName)}`;
-    if (row.position.trim()) roster.set(key, row.position);
-  }
   const ranked: { gap: number; row: HomeworkCandidate }[] = [];
   for (const row of input.rows) {
     if (teamId && row.teamId !== teamId) continue;
@@ -272,7 +178,7 @@ export function homeworkRows(input: {
       role: split.role,
       injury: split.injury,
       last5: lastFive(input.logs, row.playerId, input.date, row.stat),
-      note: homeworkNote(row, input.date, input.logs, input.lineups, roster),
+      note: storyNote(input.stories, row),
     };
   });
 }

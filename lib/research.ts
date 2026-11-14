@@ -15,7 +15,7 @@ export function researchAvailability(): { state: "ready" | "setup_needed"; messa
       message: `Research provider "${provider}" is not wired up. Provider selection stays open. No mock research was created.`,
     };
   }
-  return { state: "ready", message: "OpenAI web research is configured. Findings are retrieved only when you press Research Slate." };
+  return { state: "ready", message: "OpenAI is configured. Homework stories run with Projections. The Research list keeps stored notes." };
 }
 
 export async function researchSlate(db: Database, slateDate: string, retrievedAt: string): Promise<{
