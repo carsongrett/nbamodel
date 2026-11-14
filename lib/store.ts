@@ -250,6 +250,7 @@ class SupabaseStore implements Store {
         dnp: Boolean(row.dnp),
         points: num(row.points),
         rebounds: num(row.rebounds),
+        minutes: num(row.minutes),
         sourceTimestamp: str(row.source_timestamp),
       })),
       research: research.map((row) => ({
@@ -355,7 +356,7 @@ class SupabaseStore implements Store {
     await this.replaceProjectionInputs(db, lockedKeys);
     await this.replace("actuals", db.actuals.map((row: Actual) => ({
       player_id: row.playerId, game_id: row.gameId, season: row.season, dnp: row.dnp,
-      points: row.points, rebounds: row.rebounds, source_timestamp: row.sourceTimestamp,
+      points: row.points, rebounds: row.rebounds, minutes: row.minutes ?? null, source_timestamp: row.sourceTimestamp,
     })), ["player_id", "game_id"]);
     await this.replace("research_findings", db.research.map((row: Finding) => ({
       id: row.id, slate_date: row.slateDate, player_id: row.playerId, team_id: row.teamId, source_url: row.sourceUrl,

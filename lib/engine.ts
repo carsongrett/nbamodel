@@ -173,6 +173,8 @@ export type Actual = {
   dnp: boolean;
   points: number | null;
   rebounds: number | null;
+  /** Minutes played in that game, when the leaders page had them. Absent on older rows. */
+  minutes?: number | null;
   sourceTimestamp: string | null;
 };
 export type Finding = {
@@ -2220,6 +2222,8 @@ export type SlateView = {
   rows: SlateRow[];
   summaries: Record<Stat, Summary>;
   research: Finding[];
+  /** Newest stored stamp for this date's projections, lines, or saved rows. Null when none exist. */
+  updatedAt: string | null;
 };
 
 function statLabel(stat: Stat): string {
@@ -2417,6 +2421,33 @@ function dedupe<T>(rows: T[], keyFn: (row: T) => string, prefer: (current: T, in
   return [...kept.values()];
 }
 
+function stampMillis(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** Latest save time already stored for this date. Other dates and blank stamps are ignored. */
+export function slateSavedAt(db: Database, date: string): string | null {
+  const canon = canonicalizeDatabase(db);
+  const gameIds = new Set(canon.games.filter((game) => game.gameDate === date).map((game) => game.gameId));
+  let best = -Infinity;
+  const consider = (value: string | null | undefined) => {
+    const parsed = stampMillis(value);
+    if (parsed != null && parsed > best) best = parsed;
+  };
+  for (const row of canon.projections) {
+    if (gameIds.has(row.gameId)) consider(row.sourceTimestamp);
+  }
+  for (const row of canon.lines) {
+    if (gameIds.has(row.gameId)) consider(row.sourceTimestamp);
+  }
+  for (const row of canon.pregame) {
+    if (row.slateDate === date) consider(row.savedAt);
+  }
+  return Number.isFinite(best) && best > -Infinity ? new Date(best).toISOString() : null;
+}
+
 export function buildSlate(db: Database, date: string): SlateView {
   db = canonicalizeDatabase(db);
   const teamName = (id: string) => db.teams.find((t) => idsEqual(t.teamId, id))?.name ?? id;
@@ -2495,6 +2526,7 @@ export function buildSlate(db: Database, date: string): SlateView {
     rows,
     summaries,
     research: db.research.filter((f) => f.slateDate === date),
+    updatedAt: slateSavedAt(db, date),
   };
 }
 

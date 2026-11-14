@@ -6,6 +6,7 @@ import { formatStake } from "../lib/bets";
 import { highestDeltas } from "../lib/highest-deltas";
 import { homeworkRows, type HomeworkLog } from "../lib/homework";
 import { noteForPlayer, type LineupTeam } from "../lib/sources/rotowire-lineups";
+import { formatUpdated } from "../lib/updated";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
 import HomeworkPanel from "./HomeworkPanel";
@@ -137,7 +138,9 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   const [stat, setStat] = useState<Stat>("points");
   const [teamId, setTeamId] = useState("");
   const [payload, setPayload] = useState<Payload | null>(null);
-  const [status, setStatus] = useState("Loading the slate.");
+  const [boardRun, setBoardRun] = useState(false);
+  const [ranAt, setRanAt] = useState<Date | null>(null);
+  const [fault, setFault] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -157,11 +160,10 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       setPayload(body);
       if (body.slate) setSettings(settingsForSliders(body.slate.settings));
       if (!response.ok) {
-        setStatus(body.error || "The slate could not be loaded.");
+        setFault(body.error || "The slate could not be loaded.");
         return;
       }
-      if (body.slate && body.slate.rows.length === 0) setStatus(`No ${initialDate} players stored. Projections loads today. Lines adds the numbers.`);
-      else setStatus(`Showing ${body.slate?.rows.length ?? 0} players for ${initialDate}.`);
+      setFault(null);
     })();
     return () => {
       cancel = true;
@@ -169,8 +171,10 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   }, [initialDate]);
 
   async function post(url: string, body: Record<string, unknown>, pending: string, method: "POST" | "PUT" = "POST") {
+    const tracked = url === "/api/projections" || url === "/api/consensus";
+    void pending;
     setBusy(true);
-    setStatus(pending);
+    if (tracked) setBoardRun(true);
     try {
       const response = await fetch(url, {
         method,
@@ -182,19 +186,23 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       try {
         payloadBody = text ? JSON.parse(text) as Payload : {};
       } catch {
-        setStatus(response.ok ? "Done." : `Request failed (${response.status}).`);
+        setFault(response.ok ? "The update did not return a result." : `Request failed (${response.status}).`);
         return;
       }
       if (payloadBody.slate) {
         setPayload(payloadBody);
         setSettings(settingsForSliders(payloadBody.slate.settings));
       }
-      const errors = payloadBody.messages?.filter((item) => item.level === "error") ?? [];
-      const lead = payloadBody.error || payloadBody.message || (response.ok ? "Done." : "Request failed.");
-      setStatus(errors.length ? `${lead} ${errors.length} item errors are listed below.` : lead);
+      if (!response.ok || payloadBody.ok === false) {
+        setFault(payloadBody.error || payloadBody.message || `Request failed (${response.status}).`);
+      } else {
+        setFault(null);
+        if (tracked) setRanAt(new Date());
+      }
       if (!payloadBody.slate && payloadBody.error) setPayload((current) => ({ ...current, ...payloadBody }));
     } finally {
       setBusy(false);
+      if (tracked) setBoardRun(false);
     }
   }
 
@@ -208,7 +216,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
 
   async function checkLineups() {
     setBusy(true);
-    setStatus("Checking injuries and lineups…");
+    setBoardRun(true);
     try {
       const response = await fetch("/api/lineups", {
         method: "POST",
@@ -221,22 +229,20 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
         body = text ? JSON.parse(text) as { ok?: boolean; error?: string; message?: string; teams?: LineupTeam[] } : {};
       } catch {
         setLineupTeams(null);
-        setStatus(response.ok ? "Done." : `Request failed (${response.status}).`);
+        setFault(response.ok ? "The injury check did not return a result." : `Request failed (${response.status}).`);
         return;
       }
       if (!response.ok || body.ok === false || !body.teams) {
         setLineupTeams(null);
-        setStatus(body.error || body.message || "Injury and lineup check failed.");
+        setFault(body.error || body.message || "Injury and lineup check failed.");
         return;
       }
       setLineupTeams(body.teams);
-      const labeled = (slate?.rows ?? []).filter((row) => noteForPlayer(body.teams ?? [], row.teamId, row.playerName)).length;
-      const lead = body.message || "Injury and lineup notes loaded.";
-      setStatus(labeled
-        ? `${lead} ${labeled} ${labeled === 1 ? "player" : "players"} on the board labeled.`
-        : `${lead} No players on this board were mentioned.`);
+      setFault(null);
+      setRanAt(new Date());
     } finally {
       setBusy(false);
+      setBoardRun(false);
     }
   }
 
@@ -246,6 +252,8 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   }
 
   const slate = payload?.slate;
+  const savedStamp = ranAt ?? (slate?.updatedAt ? new Date(slate.updatedAt) : null);
+  const clock = boardRun ? "Running" : savedStamp ? formatUpdated(savedStamp) : "";
   const games = useMemo(() => {
     const rows = (slate?.rows ?? []).filter((row) => (teamId ? row.teamId === teamId : true));
     return (slate?.games ?? [])
@@ -328,7 +336,8 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       </div>
 
       <section className="status" aria-live="polite">
-        <p>{status}</p>
+        {clock ? <p>{clock}</p> : null}
+        {fault ? <p className="error">{fault}</p> : null}
         {payload?.messages?.some((item) => item.level === "error") ? (
           <ul>
             {payload.messages.filter((item) => item.level === "error").map((item, index) => (

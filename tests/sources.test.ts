@@ -75,6 +75,7 @@ function bundle(overrides: Partial<PublicFetch> = {}): PublicFetch {
       <td data-stat="opp_id">TOR</td>
       <td data-stat="pts">30</td>
       <td data-stat="trb">9</td>
+      <td data-stat="mp">36:30</td>
     </tr></table>`),
     sportsline: page(`<table><thead><tr>
       <th id="PLAYER">PLAYER</th><th id="TEAM">TEAM</th><th id="GAME">GAME</th>
@@ -225,6 +226,7 @@ test("public pages match one exact name, skip a non-current season, and do not d
   assert.equal(first.db.pace.find((row) => row.teamId === "BKN")?.pace, 100);
   assert.equal(first.db.actuals.length, 1);
   assert.equal(first.db.actuals[0]?.gameId, "2026-11-02|TOR@LAL");
+  assert.equal(first.db.actuals[0]?.minutes, 36.5);
   const lal = first.db.dvp.find((row) => row.teamId === "LAL" && row.position === "PG");
   assert.equal(lal?.pointsDiff, 20 - 25);
   assert.equal(lal?.reboundsDiff, 4 - 6);
@@ -272,6 +274,7 @@ test("a later refresh grades box scores for games already on the desk", () => {
   assert.equal(dayTwo.db.actuals.length, 1);
   assert.equal(dayTwo.db.actuals[0]?.points, 28);
   assert.equal(dayTwo.db.actuals[0]?.rebounds, 11);
+  assert.equal(dayTwo.db.actuals[0]?.minutes ?? null, null);
   assert.equal(dayTwo.db.players.some((player) => player.playerId === "nobody01"), false);
   assert.equal(dayTwo.db.games.some((game) => game.gameId === "2026-11-01|NYK@BOS"), false);
   assert.match(dayTwo.messages.map((item) => item.message).join(" "), /graded 1 result on 1 earlier date/);

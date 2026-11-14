@@ -212,6 +212,7 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
         dnp: row.dnp,
         points: row.dnp ? null : row.points,
         rebounds: row.dnp ? null : row.rebounds,
+        minutes: row.dnp ? null : row.minutes,
         sourceTimestamp: fetched.retrievedAt,
       };
       actuals = upsertByKey(actuals, [actual], (item) => `${item.playerId}|${item.gameId}`).rows;
