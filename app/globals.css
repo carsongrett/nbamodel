@@ -272,6 +272,33 @@ details.step-line > summary::marker { content: ""; }
 .tone-good { border-top-color: var(--good); }
 .tone-ink { border-top-color: var(--ink); }
 
+.homework { margin-bottom: 14px; }
+.homework-empty { margin: 0; }
+.homework-row + .homework-row { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+.homework-who { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.homework-numbers { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px; }
+.homework-delta {
+  font-weight: 700;
+  font-size: 22px;
+  line-height: 1.1;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.homework-pill {
+  font-size: 12px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-variant-numeric: tabular-nums;
+}
+.homework-role, .homework-last, .homework-note { margin: 6px 0 0; font-size: 13px; line-height: 1.4; }
+.homework-role { color: var(--muted); }
+.homework-note { color: var(--muted); }
+.run-confirm { width: min(420px, 100%); }
+.run-confirm h2 { margin: 0 0 12px; font-size: 20px; }
+
 @media (max-width: 720px) {
   h1 { font-size: 28px; }
   .shell { padding: 18px 12px 48px; }
