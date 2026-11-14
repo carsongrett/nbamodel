@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Settings, SlateGame, SlateView, Stat } from "../lib/engine";
 import { formatStake } from "../lib/bets";
 import { highestDeltas } from "../lib/highest-deltas";
-import { homeworkRows, type HomeworkLog } from "../lib/homework";
+import { candidatesFromSlate, homeworkRows, type HomeworkLog } from "../lib/homework";
 import { noteForPlayer, type LineupTeam } from "../lib/sources/rotowire-lineups";
 import { formatUpdated } from "../lib/updated";
 import AboutDesk from "./AboutDesk";
@@ -284,19 +284,8 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       teamId,
       lineups: lineupTeams,
       logs: slate?.priorGames ?? [],
-      rows: (slate?.rows ?? []).flatMap((row) => (["points", "rebounds"] as const).map((statId) => ({
-        playerId: row.playerId,
-        gameId: row.gameId,
-        playerName: row.playerName,
-        teamId: row.teamId,
-        opponentId: row.opponentId,
-        position: row.position,
-        stat: statId,
-        projection: row.stats[statId].projection,
-        line: row.stats[statId].line,
-        edge: row.stats[statId].edge,
-        minutesUsed: row.minutesUsed,
-      }))),
+      stories: slate?.homeworkStories ?? [],
+      rows: candidatesFromSlate(slate?.rows ?? []),
     });
     const board = new Map((slate?.rows ?? []).map((row) => [`${row.playerId}|${row.gameId}`, row]));
     return ranked.flatMap((item) => {

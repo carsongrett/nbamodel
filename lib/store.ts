@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { canonicalizeDatabase, DEFAULT_SETTINGS, emptyDatabase, mergeSettings, type Actual, type Database, type Dvp, type DvpWindow, type Finding, type Game, type IdMap, type MinutesOverride, type OppRebound, type OutsideProjection, type PaceRow, type Player, type PlayerRate, type PregameStat, type PropLine, type Settings, type Team, type Vegas } from "./engine";
+import { canonicalizeDatabase, DEFAULT_SETTINGS, emptyDatabase, mergeSettings, type Actual, type Database, type Dvp, type DvpWindow, type Finding, type Game, type HomeworkStory, type IdMap, type MinutesOverride, type OppRebound, type OutsideProjection, type PaceRow, type Player, type PlayerRate, type PregameStat, type PropLine, type Settings, type Team, type Vegas } from "./engine";
 import { num, projectionFromStoreRow, projectionInputFromStoreRow, projectionInputToStoreRow, selectAllRows, str } from "./store-pages";
 
 export type StorageMode = "local" | "supabase";
@@ -59,6 +59,7 @@ class FileStore implements Store {
         ...parsed,
         settings: mergeSettings(parsed.settings),
         projectionInputs: Array.isArray(parsed.projectionInputs) ? parsed.projectionInputs : [],
+        homeworkStories: Array.isArray(parsed.homeworkStories) ? parsed.homeworkStories : [],
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyDatabase();
@@ -90,6 +91,7 @@ const TABLE_ORDER: Record<string, string[]> = {
   projection_inputs: ["player_id", "game_id", "stat"],
   actuals: ["player_id", "game_id"],
   research_findings: ["id"],
+  homework_stories: ["player_id", "game_id", "stat", "slate_date"],
 };
 
 class SupabaseStore implements Store {
@@ -98,7 +100,7 @@ class SupabaseStore implements Store {
 
   async read(): Promise<Database> {
     const [
-      teams, players, games, idMap, projections, lines, rates, dvp, pace, oppRebounds, vegas, settings, overrides, pregame, projectionInputs, actuals, research,
+      teams, players, games, idMap, projections, lines, rates, dvp, pace, oppRebounds, vegas, settings, overrides, pregame, projectionInputs, actuals, research, homeworkStories,
     ] = await Promise.all([
       this.select("teams"),
       this.select("players"),
@@ -121,6 +123,11 @@ class SupabaseStore implements Store {
       }),
       this.select("actuals"),
       this.select("research_findings"),
+      this.select("homework_stories").catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : "";
+        if (missingHomeworkStoriesTable(message)) return [];
+        throw error;
+      }),
     ]);
     const settingRow = settings[0] ?? {};
     return {
@@ -270,6 +277,10 @@ class SupabaseStore implements Store {
         appliedAt: str(row.applied_at),
         flags: Array.isArray(row.flags) ? row.flags as string[] : [],
       })),
+      homeworkStories: homeworkStories.flatMap((row) => {
+        const story = homeworkStoryFromStoreRow(row);
+        return story ? [story] : [];
+      }),
     };
   }
 
@@ -364,6 +375,25 @@ class SupabaseStore implements Store {
       availability: row.availability, suggested_minutes: row.suggestedMinutes, suggested_role: row.suggestedRole,
       conflict: row.conflict, applied_at: row.appliedAt, flags: row.flags,
     })), ["id"]);
+    await this.replaceHomeworkStories(db);
+  }
+
+  private async replaceHomeworkStories(db: Database): Promise<void> {
+    const rows = (db.homeworkStories ?? []).map((row: HomeworkStory) => ({
+      player_id: row.playerId,
+      game_id: row.gameId,
+      stat: row.stat,
+      slate_date: row.slateDate,
+      text: row.text,
+      source_url: row.sourceUrl,
+      saved_at: row.savedAt,
+    }));
+    try {
+      await this.replace("homework_stories", rows, ["player_id", "game_id", "stat", "slate_date"]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (!missingHomeworkStoriesTable(message)) throw error;
+    }
   }
 
   private async select(table: string): Promise<Record<string, unknown>[]> {
@@ -462,6 +492,31 @@ class SupabaseStore implements Store {
       if (error) throw new Error(`${table}: ${error.message}`);
     }
   }
+}
+
+function homeworkStoryFromStoreRow(row: Record<string, unknown>): HomeworkStory | null {
+  const stat = row.stat === "points" || row.stat === "rebounds" ? row.stat : null;
+  const text = typeof row.text === "string" ? row.text.trim() : "";
+  const sourceUrl = typeof row.source_url === "string" ? row.source_url.trim() : "";
+  if (!stat || !text || !sourceUrl) return null;
+  return {
+    playerId: String(row.player_id),
+    gameId: String(row.game_id),
+    stat,
+    slateDate: String(row.slate_date).slice(0, 10),
+    text,
+    sourceUrl,
+    savedAt: String(row.saved_at),
+  };
+}
+
+function missingHomeworkStoriesTable(message: string): boolean {
+  const text = message.toLowerCase();
+  return text.includes("homework_stories") && (
+    text.includes("schema cache")
+    || text.includes("does not exist")
+    || text.includes("could not find")
+  );
 }
 
 function missingProjectionInputsTable(message: string): boolean {

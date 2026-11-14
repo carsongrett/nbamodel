@@ -284,6 +284,25 @@ export type Database = {
   projectionInputs: ProjectionInput[];
   actuals: Actual[];
   research: Finding[];
+  /** Sourced sentences for the homework eight. Empty when tonight has no sourced reason. */
+  homeworkStories: HomeworkStory[];
+};
+
+export type HomeworkStory = {
+  playerId: string;
+  gameId: string;
+  stat: "points" | "rebounds";
+  slateDate: string;
+  text: string;
+  sourceUrl: string;
+  savedAt: string;
+};
+
+export type HomeworkStoryNote = {
+  playerId: string;
+  gameId: string;
+  stat: "points" | "rebounds";
+  text: string;
 };
 
 export type Grade = "win" | "loss" | "push" | "no_pick" | "dnp" | "unresolved" | "ungraded";
@@ -317,6 +336,7 @@ export function emptyDatabase(): Database {
     projectionInputs: [],
     actuals: [],
     research: [],
+    homeworkStories: [],
   };
 }
 
@@ -2224,6 +2244,7 @@ export type SlateView = {
   research: Finding[];
   /** Newest stored stamp for this date's projections, lines, or saved rows. Null when none exist. */
   updatedAt: string | null;
+  homeworkStories: HomeworkStoryNote[];
 };
 
 function statLabel(stat: Stat): string {
@@ -2408,6 +2429,11 @@ export function canonicalizeDatabase(db: Database): Database {
       (current, incoming) => current.points != null || current.rebounds != null ? current : incoming,
     ),
     research: db.research.map((row) => ({ ...row, teamId: row.teamId ? teamOf(row.teamId) : row.teamId })),
+    homeworkStories: dedupe(
+      (db.homeworkStories ?? []).map((row) => ({ ...row, gameId: gameOf(row.gameId) })),
+      (row) => `${row.playerId}|${row.gameId}|${row.stat}|${row.slateDate}`,
+      preferFirst,
+    ),
   };
 }
 
@@ -2527,6 +2553,14 @@ export function buildSlate(db: Database, date: string): SlateView {
     summaries,
     research: db.research.filter((f) => f.slateDate === date),
     updatedAt: slateSavedAt(db, date),
+    homeworkStories: (db.homeworkStories ?? [])
+      .filter((row) => row.slateDate === date && row.text.trim())
+      .map((row) => ({
+        playerId: row.playerId,
+        gameId: row.gameId,
+        stat: row.stat,
+        text: row.text.trim(),
+      })),
   };
 }
 

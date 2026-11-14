@@ -140,7 +140,7 @@ test("a usual starter gets no extra sentence", () => {
   assert.equal(JSON.stringify(row), JSON.stringify(row).replace("no other starter returned", ""));
 });
 
-test("a starter replacing an out teammate gets that fact and nothing already on the row", () => {
+test("a starter replacing an out teammate keeps the role and leaves the note for a sourced story", () => {
   const lively = candidate("Dereck Lively II", "rebounds", 9.9, 7.5, { playerId: "livelde01", minutesUsed: 21 });
   const logs: HomeworkLog[] = [];
   for (const date of ["2026-11-08", "2026-11-10"]) {
@@ -155,9 +155,7 @@ test("a starter replacing an out teammate gets that fact and nothing already on 
   ], true)];
   const row = homeworkRows({ date: DATE, rows: [lively], logs, lineups })[0];
   assert.equal(row?.role, "Starting · confirmed");
-  assert.equal(row?.note, "Gafford out. Lively starts in his place.");
-  assert.equal(row?.note?.includes("7.5"), false);
-  assert.equal(row?.note?.includes(row?.last5 ?? "Reb"), false);
+  assert.equal(row?.note, null);
   assert.equal(row?.last5, "Reb 6, 6");
 });
 
@@ -195,22 +193,18 @@ test("an out teammate with no stored games is not called a change", () => {
   assert.equal(homeworkRows({ date: DATE, rows: [lively], logs: [], lineups })[0]?.note, null);
 });
 
-test("the minute sentence appears only when stored games can make a 30-day average", () => {
+test("a stored minute gap does not write the Expect flag", () => {
   const lively = candidate("Dereck Lively II", "rebounds", 9.9, 7.5, { playerId: "livelde01", minutesUsed: 22 });
-  const thin = ["2026-11-10", "2026-11-12"].map((date) => log("livelde01", "Dereck Lively II", date, 6, 8, { minutes: 14 }));
-  assert.equal(homeworkRows({ date: DATE, rows: [lively], logs: thin, lineups: null })[0]?.note, null);
-
   const enough = ["2026-10-01", "2026-11-02", "2026-11-08", "2026-11-12"].map((date, index) =>
     log("livelde01", "Dereck Lively II", date, 6, 8, { minutes: index === 0 ? 40 : 14 }),
   );
   const row = homeworkRows({ date: DATE, rows: [lively], logs: enough, lineups: null })[0];
-  assert.equal(row?.note, "Expect 22 min vs 14 min over the last 30 days.");
-
-  const close = enough.map((item) => ({ ...item, minutes: 21.5 }));
-  assert.equal(homeworkRows({ date: DATE, rows: [lively], logs: close, lineups: null })[0]?.note, null);
+  assert.equal(row?.last5, "Min 40, 14, 14, 14 · Reb 8, 8, 8, 8");
+  assert.equal(row?.note, null);
+  assert.equal(JSON.stringify(row).includes("Expect"), false);
 });
 
-test("replacement and minutes can share one sentence", () => {
+test("a minute gap and a lineup change leave the note blank", () => {
   const lively = candidate("Dereck Lively II", "rebounds", 9.9, 7.5, { playerId: "livelde01", minutesUsed: 21 });
   const logs = [
     log("livelde01", "Dereck Lively II", "2026-11-08", 6, 6, { minutes: 14 }),
@@ -223,8 +217,10 @@ test("replacement and minutes can share one sentence", () => {
     { name: "Daniel Gafford", role: "bench", injury: "Out", position: "C" },
   ])];
   const row = homeworkRows({ date: DATE, rows: [lively], logs, lineups })[0];
-  assert.equal(row?.note, "Gafford out. Lively starts in his place. Expect 21 min vs 14 min over the last 30 days.");
+  assert.equal(row?.role, "Starting");
+  assert.equal(row?.note, null);
   assert.equal(row?.last5, "Min 14, 14, 14 · Reb 6, 6, 6");
+  assert.equal(JSON.stringify(row).includes("Expect"), false);
 });
 
 test("injury tag stays on the role line and a bench player is not called a new starter", () => {
@@ -294,7 +290,7 @@ test("prior games are stored results from before the slate, without invented min
   assert.equal(logs.every((row) => row.playerId === "livelde01"), true);
 });
 
-test("a stored minute gap is one sentence under the last five, and a quiet row has none", () => {
+test("a stored story is the note under the last five, and a quiet row has none", () => {
   const db = emptyDatabase();
   db.players.push({ playerId: "livelde01", displayName: "Dereck Lively II", teamId: "DAL", position: "C", season: "2026-27" });
   for (const date of ["2026-11-02", "2026-11-08", "2026-11-12"]) {
@@ -311,11 +307,22 @@ test("a stored minute gap is one sentence under the last five, and a quiet row h
     });
   }
   const lively = candidate("Dereck Lively II", "rebounds", 9.9, 7.5, { playerId: "livelde01", minutesUsed: 21 });
-  const row = homeworkRows({ date: DATE, rows: [lively], logs: priorGames(db, DATE), lineups: null })[0];
+  const logs = priorGames(db, DATE);
+  const row = homeworkRows({ date: DATE, rows: [lively], logs, lineups: null })[0];
   assert.equal(row?.last5, "Min 14, 14, 14 · Reb 6, 6, 6");
-  assert.equal(row?.note, "Expect 21 min vs 14 min over the last 30 days.");
-  assert.equal(row?.note?.includes("7.5"), false);
-  assert.equal(row?.note?.includes("6, 6, 6"), false);
+  assert.equal(row?.note, null);
+  const story = "Sabonis is out, so the backup center is in line for the extra minutes.";
+  const withStory = homeworkRows({
+    date: DATE,
+    rows: [lively],
+    logs,
+    lineups: null,
+    stories: [{ playerId: "livelde01", gameId: "g1", stat: "rebounds", text: story }],
+  })[0];
+  assert.equal(withStory?.note, story);
+  assert.equal(withStory?.note?.includes("7.5"), false);
+  assert.equal(withStory?.note?.includes("6, 6, 6"), false);
+  assert.equal(withStory?.note?.includes("Expect"), false);
 
   const quiet = homeworkRows({
     date: DATE,
