@@ -8,6 +8,7 @@ const panel = readFileSync(new URL("../components/HomeworkPanel.tsx", import.met
 const homework = readFileSync(new URL("../lib/homework.ts", import.meta.url), "utf8");
 const http = readFileSync(new URL("../lib/http.ts", import.meta.url), "utf8");
 const engine = readFileSync(new URL("../lib/engine.ts", import.meta.url), "utf8");
+const trace = readFileSync(new URL("../components/Trace.tsx", import.meta.url), "utf8");
 
 function between(source: string, start: string, end: string): string {
   const from = source.indexOf(start);
@@ -36,14 +37,33 @@ test("homework sits above the player list and is not a table", () => {
   assert.match(http, /priorGames: priorGames\(db, date\)/);
 });
 
+test("a homework row opens the same formula lines, and a second click or close hides them", () => {
+  assert.match(panel, /setOpenKey\(open \? null : key\)/);
+  assert.match(panel, /aria-expanded=\{open\}/);
+  assert.match(panel, />Close</);
+  assert.match(panel, /<Trace stat=\{row\.cell\} locked=\{row\.locked\} bare \/>/);
+  assert.doesNotMatch(panel, /<details/);
+  assert.doesNotMatch(panel, /<summary/);
+  assert.match(today, /cell: source\.stats\[item\.stat\]/);
+  assert.match(today, /locked: source\.locked/);
+  assert.match(trace, /label="SL projection"/);
+  assert.match(trace, /label="Dimers"/);
+  assert.match(trace, /if \(bare\) return body/);
+  assert.match(trace, /<summary>Projection trace<\/summary>/);
+});
+
 test("Projections and Lines ask first, and the other buttons do not", () => {
   const actions = between(today, '<div className="row actions">', "</div>");
   assert.match(actions, /askToRun\("Projections", "\/api\/projections"/);
   assert.match(actions, /askToRun\("Lines", "\/api\/consensus"/);
   assert.doesNotMatch(actions, /post\("\/api\/projections"/);
   assert.doesNotMatch(actions, /post\("\/api\/consensus"/);
-  assert.match(actions, /onClick=\{\(\) => void checkLineups\(\)\}>Injury\/lineup check/);
-  assert.match(actions, /post\("\/api\/research"/);
+  assert.match(actions, /className="primary" type="button" disabled=\{busy\} onClick=\{\(\) => askToRun\("Projections"/);
+  assert.match(actions, /className="primary" type="button" disabled=\{busy\} onClick=\{\(\) => askToRun\("Lines"/);
+  assert.match(actions, /className="primary" type="button" disabled=\{busy\} onClick=\{\(\) => void checkLineups\(\)\}>Injury\/lineup check/);
+  assert.doesNotMatch(actions, /secondary/);
+  assert.doesNotMatch(actions, /Research Slate/);
+  assert.doesNotMatch(actions, /\/api\/research/);
 
   const dialog = between(today, 'role="dialog"', "aboutOpen ? <AboutDesk");
   assert.match(dialog, /Run \{pendingRun\.label\}\?/);

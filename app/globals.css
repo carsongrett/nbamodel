@@ -297,6 +297,18 @@ details.step-line > summary::marker { content: ""; }
 .homework-role, .homework-last, .homework-note { margin: 6px 0 0; font-size: 13px; line-height: 1.4; }
 .homework-role { color: var(--muted); }
 .homework-note { color: var(--muted); }
+.homework-open { cursor: pointer; }
+.homework-breakout { margin-top: 8px; }
+.homework-close {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.homework-breakout .trace-body { margin-top: 6px; }
 .run-confirm { width: min(420px, 100%); }
 .run-confirm h2 { margin: 0 0 12px; font-size: 20px; }
 

@@ -278,25 +278,33 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
     }),
     teamId,
   ), [slate, stat, teamId]);
-  const homework = useMemo(() => homeworkRows({
-    date,
-    teamId,
-    lineups: lineupTeams,
-    logs: slate?.priorGames ?? [],
-    rows: (slate?.rows ?? []).flatMap((row) => (["points", "rebounds"] as const).map((statId) => ({
-      playerId: row.playerId,
-      gameId: row.gameId,
-      playerName: row.playerName,
-      teamId: row.teamId,
-      opponentId: row.opponentId,
-      position: row.position,
-      stat: statId,
-      projection: row.stats[statId].projection,
-      line: row.stats[statId].line,
-      edge: row.stats[statId].edge,
-      minutesUsed: row.minutesUsed,
-    }))),
-  }), [date, lineupTeams, slate, teamId]);
+  const homework = useMemo(() => {
+    const ranked = homeworkRows({
+      date,
+      teamId,
+      lineups: lineupTeams,
+      logs: slate?.priorGames ?? [],
+      rows: (slate?.rows ?? []).flatMap((row) => (["points", "rebounds"] as const).map((statId) => ({
+        playerId: row.playerId,
+        gameId: row.gameId,
+        playerName: row.playerName,
+        teamId: row.teamId,
+        opponentId: row.opponentId,
+        position: row.position,
+        stat: statId,
+        projection: row.stats[statId].projection,
+        line: row.stats[statId].line,
+        edge: row.stats[statId].edge,
+        minutesUsed: row.minutesUsed,
+      }))),
+    });
+    const board = new Map((slate?.rows ?? []).map((row) => [`${row.playerId}|${row.gameId}`, row]));
+    return ranked.flatMap((item) => {
+      const source = board.get(`${item.playerId}|${item.gameId}`);
+      if (!source) return [];
+      return [{ ...item, cell: source.stats[item.stat], locked: source.locked }];
+    });
+  }, [date, lineupTeams, slate, teamId]);
 
   return (
     <main className="shell">
@@ -330,9 +338,8 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
           </select>
         </label>
         <button className="primary" type="button" disabled={busy} onClick={() => askToRun("Projections", "/api/projections", "Loading projections…")}>Projections</button>
-        <button className="secondary" type="button" disabled={busy} onClick={() => askToRun("Lines", "/api/consensus", "Loading lines…")}>Lines</button>
-        <button className="secondary" type="button" disabled={busy} onClick={() => void checkLineups()}>Injury/lineup check</button>
-        <button className="ghost" type="button" disabled={busy} onClick={() => void post("/api/research", {}, "Requesting research…")}>Research Slate</button>
+        <button className="primary" type="button" disabled={busy} onClick={() => askToRun("Lines", "/api/consensus", "Loading lines…")}>Lines</button>
+        <button className="primary" type="button" disabled={busy} onClick={() => void checkLineups()}>Injury/lineup check</button>
       </div>
 
       <section className="status" aria-live="polite">
