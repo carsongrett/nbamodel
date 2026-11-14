@@ -7,6 +7,7 @@ const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8")
 const panel = readFileSync(new URL("../components/HomeworkPanel.tsx", import.meta.url), "utf8");
 const homework = readFileSync(new URL("../lib/homework.ts", import.meta.url), "utf8");
 const http = readFileSync(new URL("../lib/http.ts", import.meta.url), "utf8");
+const engine = readFileSync(new URL("../lib/engine.ts", import.meta.url), "utf8");
 
 function between(source: string, start: string, end: string): string {
   const from = source.indexOf(start);
@@ -29,6 +30,7 @@ test("homework sits above the player list and is not a table", () => {
   assert.match(panel, /className="lineup-injury"/);
   assert.match(panel, /className="homework-last"/);
   assert.match(panel, /className="homework-note"/);
+  assert.ok(panel.indexOf("homework-last") < panel.indexOf("homework-note"));
   assert.doesNotMatch(panel, /<table/);
   assert.doesNotMatch(homework, /openai|fetch\(/i);
   assert.match(http, /priorGames: priorGames\(db, date\)/);
@@ -58,6 +60,27 @@ test("over and under prices stay in the table and are not shown", () => {
   assert.match(today, /odds\(cell\.overOdds\)/);
   assert.match(today, /odds\(cell\.underOdds\)/);
   assert.match(css, /\.odds-col \{ display: none; \}/);
+});
+
+test("the status line is Running or an Updated time, never a player count", () => {
+  const spot = between(today, '<section className="status"', "<HomeworkPanel");
+  assert.doesNotMatch(spot, /Showing/);
+  assert.doesNotMatch(spot, /players/);
+  assert.doesNotMatch(today, /players on the board labeled/);
+  assert.doesNotMatch(today, /No \$\{initialDate\} players stored/);
+  assert.match(today, /boardRun \? "Running"/);
+  assert.match(today, /formatUpdated\(savedStamp\)/);
+  assert.match(engine, /updatedAt: slateSavedAt\(db, date\)/);
+
+  const post = between(today, "async function post", "function put");
+  assert.match(post, /url === "\/api\/projections" \|\| url === "\/api\/consensus"/);
+  assert.match(post, /setBoardRun\(true\)/);
+  assert.match(post, /setRanAt\(new Date\(\)\)/);
+
+  const check = between(today, "async function checkLineups", "function lineupNote");
+  assert.match(check, /setBoardRun\(true\)/);
+  assert.match(check, /setRanAt\(new Date\(\)\)/);
+  assert.doesNotMatch(check, /labeled/);
 });
 
 test("the Import card is off the Today page", () => {

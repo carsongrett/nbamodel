@@ -56,8 +56,8 @@ const MINUTE_GAP = 2;
 const USUAL_START_GAMES = 3;
 
 /**
- * Stored results before the slate date. Actuals do not keep minutes, so that field stays empty
- * and the homework sentence skips a 30-day minute comparison.
+ * Stored results before the slate date. Minutes stay empty when that game was saved without them,
+ * and the homework sentence then skips the 30-day minute comparison.
  */
 export function priorGames(db: Database, date: string): HomeworkLog[] {
   const canon = canonicalizeDatabase(db);
@@ -84,7 +84,7 @@ export function priorGames(db: Database, date: string): HomeworkLog[] {
       date: played,
       points: actual.points,
       rebounds: actual.rebounds,
-      minutes: null,
+      minutes: finite(actual.minutes) ? actual.minutes : null,
     });
   }
   logs.sort((a, b) => a.date.localeCompare(b.date) || a.gameId.localeCompare(b.gameId) || a.playerId.localeCompare(b.playerId));

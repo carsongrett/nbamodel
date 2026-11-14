@@ -284,9 +284,44 @@ test("prior games are stored results from before the slate, without invented min
     actual("ghost01", "2026-11-10"),
   );
   db.games.push(game("2026-11-09"));
+  const withMinutes = db.actuals.find((row) => row.gameId === "2026-11-10|DEN@DAL" && row.playerId === "livelde01");
+  if (withMinutes) withMinutes.minutes = 14;
 
   const logs = priorGames(db, DATE);
   assert.deepEqual(logs.map((row) => row.date), ["2026-10-01", "2026-11-10"]);
-  assert.equal(logs.every((row) => row.minutes == null), true);
+  assert.equal(logs.find((row) => row.date === "2026-10-01")?.minutes, null);
+  assert.equal(logs.find((row) => row.date === "2026-11-10")?.minutes, 14);
   assert.equal(logs.every((row) => row.playerId === "livelde01"), true);
+});
+
+test("a stored minute gap is one sentence under the last five, and a quiet row has none", () => {
+  const db = emptyDatabase();
+  db.players.push({ playerId: "livelde01", displayName: "Dereck Lively II", teamId: "DAL", position: "C", season: "2026-27" });
+  for (const date of ["2026-11-02", "2026-11-08", "2026-11-12"]) {
+    db.games.push({ gameId: `${date}|DEN@DAL`, season: "2026-27", gameDate: date, homeTeamId: "DAL", awayTeamId: "DEN", status: "final" });
+    db.actuals.push({
+      playerId: "livelde01",
+      gameId: `${date}|DEN@DAL`,
+      season: "2026-27",
+      dnp: false,
+      points: 6,
+      rebounds: 6,
+      minutes: 14,
+      sourceTimestamp: null,
+    });
+  }
+  const lively = candidate("Dereck Lively II", "rebounds", 9.9, 7.5, { playerId: "livelde01", minutesUsed: 21 });
+  const row = homeworkRows({ date: DATE, rows: [lively], logs: priorGames(db, DATE), lineups: null })[0];
+  assert.equal(row?.last5, "Min 14, 14, 14 · Reb 6, 6, 6");
+  assert.equal(row?.note, "Expect 21 min vs 14 min over the last 30 days.");
+  assert.equal(row?.note?.includes("7.5"), false);
+  assert.equal(row?.note?.includes("6, 6, 6"), false);
+
+  const quiet = homeworkRows({
+    date: DATE,
+    rows: [candidate("Dereck Lively II", "rebounds", 9.9, 7.5, { playerId: "livelde01", minutesUsed: 14 })],
+    logs: priorGames(db, DATE),
+    lineups: null,
+  })[0];
+  assert.equal(quiet?.note, null);
 });

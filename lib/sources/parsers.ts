@@ -13,6 +13,8 @@ export type BrefPlayerRow = {
   mpPerGame: number | null;
   points: number | null;
   rebounds: number | null;
+  /** Minutes in that game. Empty on season pages and on rows that did not play. */
+  minutes: number | null;
   dnp: boolean;
   opponent: string | null;
   location: string;
@@ -58,6 +60,19 @@ function num(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/** Daily leaders write minutes as 32:15. A bare number is already minutes. */
+function minutesPlayed(value: string | undefined): number | null {
+  if (!value) return null;
+  const text = value.trim();
+  if (text === "" || /did not play|inactive|did not dress/i.test(text)) return null;
+  const clock = /^(\d+):(\d{2})$/.exec(text);
+  if (clock) {
+    const minutes = Number(clock[1]) + Number(clock[2]) / 60;
+    return Number.isFinite(minutes) ? minutes : null;
+  }
+  return num(text);
+}
+
 function int(value: string | undefined): number | null {
   const parsed = num(value);
   return parsed == null ? null : Math.round(parsed);
@@ -93,6 +108,7 @@ export function parseBrefPlayers(html: string): BrefPlayerRow[] {
       mpPerGame: num(row.mp_per_g),
       points: dnp ? null : num(row.pts),
       rebounds: dnp ? null : num(row.trb),
+      minutes: dnp ? null : minutesPlayed(row.mp),
       dnp,
       opponent: canonicalTeam(row.opp_id || ""),
       location: (row.game_location || "").trim(),
