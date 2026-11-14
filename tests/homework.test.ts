@@ -120,6 +120,15 @@ test("last five games list the stat once and minutes only when stored", () => {
   );
   const rounded = homeworkRows({ date: DATE, rows: [acuff], logs: fractional, lineups: null })[0];
   assert.equal(rounded?.last5, "Min 37, 43, 34, 39, 40 · Pts 25, 22, 22.4, 32, 29");
+
+  const stored = ["2026-11-02", "2026-11-04", "2026-11-06", "2026-11-08", "2026-11-10"].map((date, index) =>
+    log("acuffda01", "Darius Acuff Jr.", date, 25, 4, {
+      gameId: `${date}|stored`,
+      minutes: [36.833333333333336, 42.46666666666667, 33.45, 39.35, 39.86666666666667][index],
+    }),
+  );
+  const fromClock = homeworkRows({ date: DATE, rows: [acuff], logs: stored, lineups: null })[0];
+  assert.equal(fromClock?.last5, "Min 37, 43, 34, 39, 40 · Pts 25, 25, 25, 25, 25");
 });
 
 test("a usual starter gets no extra sentence", () => {
