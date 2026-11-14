@@ -113,6 +113,13 @@ test("last five games list the stat once and minutes only when stored", () => {
   const shown = homeworkRows({ date: DATE, rows: [lively], logs: withMinutes, lineups: null });
   assert.equal(shown[0]?.last5, "Min 21, 22, 23, 24, 25 · Reb 2, 3, 4, 5, 6");
   assert.equal(shown[0]?.note, null);
+
+  const acuff = candidate("Darius Acuff Jr.", "points", 28, 24.5, { playerId: "acuffda01" });
+  const fractional = ["2026-11-02", "2026-11-04", "2026-11-06", "2026-11-08", "2026-11-10"].map((date, index) =>
+    log("acuffda01", "Darius Acuff Jr.", date, [25, 22, 22.4, 32, 29][index], 4, { minutes: [36.8, 42.5, 33.5, 39.4, 39.9][index] }),
+  );
+  const rounded = homeworkRows({ date: DATE, rows: [acuff], logs: fractional, lineups: null })[0];
+  assert.equal(rounded?.last5, "Min 37, 43, 34, 39, 40 · Pts 25, 22, 22.4, 32, 29");
 });
 
 test("a usual starter gets no extra sentence", () => {
