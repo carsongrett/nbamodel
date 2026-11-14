@@ -92,6 +92,11 @@ function numText(value: number): string {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
+/** Whole minutes. A half rounds up. */
+function minuteText(value: number): string {
+  return String(Math.round(value));
+}
+
 function splitRole(note: string | null): { role: string | null; injury: string | null } {
   if (!note) return { role: null, injury: null };
   const parts = note.split(" · ");
@@ -109,7 +114,7 @@ function lastFive(logs: readonly HomeworkLog[], playerId: string, date: string, 
   const label = stat === "points" ? "Pts" : "Reb";
   const values = recent.map((log) => numText((stat === "points" ? log.points : log.rebounds) as number)).join(", ");
   const minutes = recent.every((log) => finite(log.minutes))
-    ? `Min ${recent.map((log) => numText(log.minutes as number)).join(", ")} · `
+    ? `Min ${recent.map((log) => minuteText(log.minutes as number)).join(", ")} · `
     : "";
   return `${minutes}${label} ${values}`;
 }
