@@ -367,8 +367,8 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                     <th className="num">Line</th>
                     <th className="num">Bet</th>
                     <th className="num">Delta</th>
-                    <th className="num">Over</th>
-                    <th className="num">Under</th>
+                    <th className="num odds-col">Over</th>
+                    <th className="num odds-col">Under</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -441,8 +441,8 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                           )}
                         </td>
                         <td className="num delta" style={deltaStyle(cell.edge)}>{fmt(cell.edge)}</td>
-                        <td className="num">{odds(cell.overOdds)}</td>
-                        <td className="num">{odds(cell.underOdds)}</td>
+                        <td className="num odds-col">{odds(cell.overOdds)}</td>
+                        <td className="num odds-col">{odds(cell.underOdds)}</td>
                       </tr>
                     );
                   })}

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const today = readFileSync(new URL("../components/Dashboard.tsx", import.meta.url), "utf8");
+const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const panel = readFileSync(new URL("../components/HomeworkPanel.tsx", import.meta.url), "utf8");
 const homework = readFileSync(new URL("../lib/homework.ts", import.meta.url), "utf8");
 const http = readFileSync(new URL("../lib/http.ts", import.meta.url), "utf8");
@@ -48,6 +49,15 @@ test("Projections and Lines ask first, and the other buttons do not", () => {
   assert.match(dialog, /setPendingRun\(null\)/);
   assert.match(dialog, /void post\(next\.url, \{\}, next\.pending\)/);
   assert.match(dialog, /\{pendingRun\.label\}/);
+});
+
+test("over and under prices stay in the table and are not shown", () => {
+  assert.match(today, /function odds\(value: number \| null\)/);
+  assert.match(today, /<th className="num odds-col">Over<\/th>/);
+  assert.match(today, /<th className="num odds-col">Under<\/th>/);
+  assert.match(today, /odds\(cell\.overOdds\)/);
+  assert.match(today, /odds\(cell\.underOdds\)/);
+  assert.match(css, /\.odds-col \{ display: none; \}/);
 });
 
 test("the Import card is off the Today page", () => {

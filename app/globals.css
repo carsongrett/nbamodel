@@ -124,6 +124,7 @@ table { width: 100%; border-collapse: collapse; font-size: 15px; }
 th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
 td.num, th.num, .line-input { text-align: right; font-variant-numeric: tabular-nums; }
+.odds-col { display: none; }
 td.delta { border-radius: 6px; }
 .player { font-weight: 500; }
 .lineup-note {
