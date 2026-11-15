@@ -62,6 +62,10 @@ function roleLabel(team: LineupTeam, player: LineupPlayer): string {
   return team.confirmed ? "Starting · confirmed" : "Starting";
 }
 
+function lineupName(player: LineupPlayer, role: string): string {
+  return player.position ? `${player.name} · ${player.position} · ${role}` : `${player.name} · ${role}`;
+}
+
 export default function HomeworkPanel({
   rows,
   lineups,
@@ -163,7 +167,7 @@ export default function HomeworkPanel({
                   <ul className="homework-lineup-list">
                     {[...starters, ...bench].map((player) => (
                       <li key={`${player.role}|${player.name}`}>
-                        {player.name} · {roleLabel(team, player)}
+                        {lineupName(player, roleLabel(team, player))}
                         {player.injury ? <> · <span className="lineup-injury">{player.injury}</span></> : null}
                       </li>
                     ))}
