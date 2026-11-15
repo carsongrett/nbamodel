@@ -2,12 +2,23 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CURRENT_SEASON, emptyDatabase, type PregameStat } from "../lib/engine.ts";
 import { slateSavedAt } from "../lib/engine.ts";
-import { formatUpdated } from "../lib/updated.ts";
+import { formatUpdated, runClock } from "../lib/updated.ts";
 
 test("formatUpdated is Central time without a date", () => {
   assert.equal(formatUpdated(new Date("2026-11-14T03:48:00Z")), "Updated 9:48 PM");
   assert.equal(formatUpdated(new Date("2026-11-14T16:05:00Z")), "Updated 10:05 AM");
   assert.equal(formatUpdated(new Date("not-a-time")), "");
+});
+
+test("the status names Projections or Lines and keeps both times", () => {
+  const projectionsAt = new Date("2026-11-14T21:57:00Z");
+  const linesAt = new Date("2026-11-14T22:10:00Z");
+  assert.equal(runClock({ running: "Projections", projectionsAt: null, linesAt: null }), "Running Projections");
+  assert.equal(runClock({ running: "Lines", projectionsAt: null, linesAt: null }), "Running Lines");
+  assert.equal(runClock({ running: null, projectionsAt, linesAt: null }), "Projections 3:57 PM");
+  assert.equal(runClock({ running: null, projectionsAt: null, linesAt }), "Lines 4:10 PM");
+  assert.equal(runClock({ running: null, projectionsAt, linesAt }), "Projections 3:57 PM · Lines 4:10 PM");
+  assert.equal(runClock({ running: null, projectionsAt: null, linesAt: null }), "");
 });
 
 test("slate saved time is the newest stored stamp for that date", () => {

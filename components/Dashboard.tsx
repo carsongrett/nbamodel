@@ -6,7 +6,7 @@ import { formatStake } from "../lib/bets";
 import { highestDeltas } from "../lib/highest-deltas";
 import { candidatesFromSlate, homeworkRows, type HomeworkLog } from "../lib/homework";
 import { noteForPlayer, type LineupTeam } from "../lib/sources/rotowire-lineups";
-import { formatUpdated } from "../lib/updated";
+import { runClock } from "../lib/updated";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
 import HomeworkPanel from "./HomeworkPanel";
@@ -138,8 +138,9 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   const [stat, setStat] = useState<Stat>("points");
   const [teamId, setTeamId] = useState("");
   const [payload, setPayload] = useState<Payload | null>(null);
-  const [boardRun, setBoardRun] = useState(false);
-  const [ranAt, setRanAt] = useState<Date | null>(null);
+  const [running, setRunning] = useState<"Projections" | "Lines" | null>(null);
+  const [projectionsAt, setProjectionsAt] = useState<Date | null>(null);
+  const [linesAt, setLinesAt] = useState<Date | null>(null);
   const [fault, setFault] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -171,10 +172,10 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   }, [initialDate]);
 
   async function post(url: string, body: Record<string, unknown>, pending: string, method: "POST" | "PUT" = "POST") {
-    const tracked = url === "/api/projections" || url === "/api/consensus";
+    const runName = url === "/api/projections" ? "Projections" : url === "/api/consensus" ? "Lines" : null;
     void pending;
     setBusy(true);
-    if (tracked) setBoardRun(true);
+    if (runName) setRunning(runName);
     try {
       const response = await fetch(url, {
         method,
@@ -197,12 +198,13 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
         setFault(payloadBody.error || payloadBody.message || `Request failed (${response.status}).`);
       } else {
         setFault(null);
-        if (tracked) setRanAt(new Date());
+        if (runName === "Projections") setProjectionsAt(new Date());
+        if (runName === "Lines") setLinesAt(new Date());
       }
       if (!payloadBody.slate && payloadBody.error) setPayload((current) => ({ ...current, ...payloadBody }));
     } finally {
       setBusy(false);
-      if (tracked) setBoardRun(false);
+      if (runName) setRunning(null);
     }
   }
 
@@ -216,7 +218,6 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
 
   async function checkLineups() {
     setBusy(true);
-    setBoardRun(true);
     try {
       const response = await fetch("/api/lineups", {
         method: "POST",
@@ -239,10 +240,8 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       }
       setLineupTeams(body.teams);
       setFault(null);
-      setRanAt(new Date());
     } finally {
       setBusy(false);
-      setBoardRun(false);
     }
   }
 
@@ -252,8 +251,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   }
 
   const slate = payload?.slate;
-  const savedStamp = ranAt ?? (slate?.updatedAt ? new Date(slate.updatedAt) : null);
-  const clock = boardRun ? "Running" : savedStamp ? formatUpdated(savedStamp) : "";
+  const clock = runClock({ running, projectionsAt, linesAt });
   const games = useMemo(() => {
     const rows = (slate?.rows ?? []).filter((row) => (teamId ? row.teamId === teamId : true));
     return (slate?.games ?? [])
@@ -288,10 +286,19 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       rows: candidatesFromSlate(slate?.rows ?? []),
     });
     const board = new Map((slate?.rows ?? []).map((row) => [`${row.playerId}|${row.gameId}`, row]));
+    const gamesById = new Map((slate?.games ?? []).map((game) => [game.gameId, game]));
     return ranked.flatMap((item) => {
       const source = board.get(`${item.playerId}|${item.gameId}`);
       if (!source) return [];
-      return [{ ...item, cell: source.stats[item.stat], locked: source.locked }];
+      const game = gamesById.get(item.gameId);
+      return [{
+        ...item,
+        cell: source.stats[item.stat],
+        locked: source.locked,
+        homeTeamId: game?.homeTeamId ?? "",
+        spread: game?.spread ?? null,
+        total: game?.total ?? null,
+      }];
     });
   }, [date, lineupTeams, slate, teamId]);
 
@@ -348,7 +355,14 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
         ) : null}
       </section>
 
-      <HomeworkPanel rows={homework} />
+      <HomeworkPanel
+        rows={homework}
+        lineups={lineupTeams}
+        busy={busy}
+        onUnits={(row, units) => {
+          void put("/api/bets", { playerId: row.playerId, gameId: row.gameId, stat: row.stat, units }, "Saving the bet…");
+        }}
+      />
 
       <div className="game-list">
         {games.length === 0 ? (

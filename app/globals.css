@@ -294,9 +294,20 @@ details.step-line > summary::marker { content: ""; }
   padding: 2px 8px;
   font-variant-numeric: tabular-nums;
 }
-.homework-role, .homework-last, .homework-note { margin: 6px 0 0; font-size: 13px; line-height: 1.4; }
-.homework-role { color: var(--muted); }
-.homework-note { color: var(--muted); }
+.homework-market, .homework-last, .homework-note { margin: 6px 0 0; font-size: 13px; line-height: 1.4; }
+.homework-market, .homework-note { color: var(--muted); }
+.homework-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 8px; }
+.homework-units { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.homework-lineup {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.homework-lineup-list { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.45; }
 .homework-open { cursor: pointer; }
 .homework-breakout { margin-top: 8px; }
 .homework-close {
