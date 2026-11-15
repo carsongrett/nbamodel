@@ -1,5 +1,4 @@
 import { finishRun } from "../../../lib/engine";
-import { replaceHomeworkStories, requestHomeworkStories, rowsForStory } from "../../../lib/homework-story";
 import { commitProjections, collectProjectionSources } from "../../../lib/sources/daily-run";
 import { readJson, respond, slatePayload, todayOr } from "../../../lib/http";
 import { updateDatabase } from "../../../lib/store";
@@ -22,9 +21,7 @@ export async function POST(request: Request) {
           },
         };
       }
-      const stories = await requestHomeworkStories(rowsForStory(committed.db, date), date, new Date().toISOString());
-      const next = stories == null ? committed.db : replaceHomeworkStories(committed.db, date, stories);
-      const finished = finishRun(next, "projections", new Date().toISOString());
+      const finished = finishRun(committed.db, "projections", new Date().toISOString());
       return {
         db: finished,
         result: {

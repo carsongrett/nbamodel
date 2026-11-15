@@ -373,7 +373,7 @@ test("prior games are stored results from before the slate, without invented min
   assert.equal(logs.every((row) => row.playerId === "livelde01"), true);
 });
 
-test("a stored story is the note under the last five, and a quiet row has none", () => {
+test("biggest deltas keep the last five and do not attach a story", () => {
   const db = emptyDatabase();
   db.players.push({ playerId: "livelde01", displayName: "Dereck Lively II", teamId: "DAL", position: "C", season: "2026-27" });
   for (const date of ["2026-11-02", "2026-11-08", "2026-11-12"]) {
@@ -394,18 +394,6 @@ test("a stored story is the note under the last five, and a quiet row has none",
   const row = homeworkRows({ date: DATE, rows: [lively], logs, lineups: null })[0];
   assert.equal(row?.last5, "Min 14, 14, 14 · Reb 6, 6, 6");
   assert.equal(row?.note, null);
-  const story = "Sabonis is out, so the backup center is in line for the extra minutes.";
-  const withStory = homeworkRows({
-    date: DATE,
-    rows: [lively],
-    logs,
-    lineups: null,
-    stories: [{ playerId: "livelde01", gameId: "g1", stat: "rebounds", text: story }],
-  })[0];
-  assert.equal(withStory?.note, story);
-  assert.equal(withStory?.note?.includes("7.5"), false);
-  assert.equal(withStory?.note?.includes("6, 6, 6"), false);
-  assert.equal(withStory?.note?.includes("Expect"), false);
 
   const quiet = homeworkRows({
     date: DATE,

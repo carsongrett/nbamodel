@@ -128,14 +128,6 @@ function markedOut(lineups: readonly LineupTeam[] | null, teamId: string, player
   return lineupPlayer([...lineups], teamId, playerName)?.player.injury === "Out";
 }
 
-function storyNote(
-  stories: readonly { playerId: string; gameId: string; stat: HomeworkStat; text: string }[] | undefined,
-  row: HomeworkCandidate,
-): string | null {
-  const text = stories?.find((story) => story.playerId === row.playerId && story.gameId === row.gameId && story.stat === row.stat)?.text.trim() ?? "";
-  return text || null;
-}
-
 export function candidatesFromSlate(rows: readonly SlateRow[]): HomeworkCandidate[] {
   return rows.flatMap((row) => (["points", "rebounds"] as const).map((stat) => ({
     playerId: row.playerId,
@@ -160,7 +152,6 @@ export function homeworkRows(input: {
   rows: readonly HomeworkCandidate[];
   logs: readonly HomeworkLog[];
   lineups: readonly LineupTeam[] | null;
-  stories?: readonly { playerId: string; gameId: string; stat: HomeworkStat; text: string }[];
   limit?: number;
 }): HomeworkRow[] {
   const teamId = input.teamId ?? "";
@@ -195,7 +186,7 @@ export function homeworkRows(input: {
       role: split.role,
       injury: split.injury,
       last5: lastFive(input.logs, row.playerId, input.date, row.stat),
-      note: storyNote(input.stories, row),
+      note: null,
     };
   });
 }

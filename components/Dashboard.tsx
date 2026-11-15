@@ -324,7 +324,6 @@ export default function Dashboard({
       teamId,
       lineups: lineupTeams,
       logs: slate?.priorGames ?? [],
-      stories: slate?.homeworkStories ?? [],
       rows: candidatesFromSlate(slate?.rows ?? []),
     });
     const board = new Map((slate?.rows ?? []).map((row) => [`${row.playerId}|${row.gameId}`, row]));
