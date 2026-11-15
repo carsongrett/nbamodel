@@ -123,7 +123,11 @@ export default function HomeworkPanel({
                 <span className="homework-pill">{compact(row.line, 1)} line</span>
               </div>
               {market ? <p className="homework-market">{market}</p> : null}
-              {row.last5 ? <p className="homework-last">{row.last5}</p> : null}
+              {row.last5 ? (
+                <p className="homework-last">
+                  {row.last5.split(" · ").map((line, index) => <span key={index}>{line}</span>)}
+                </p>
+              ) : null}
               {row.note ? <p className="homework-note">{row.note}</p> : null}
             </div>
             <div className="homework-actions">
