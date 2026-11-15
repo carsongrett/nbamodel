@@ -253,16 +253,16 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   const slate = payload?.slate;
   const clock = runClock({ running, projectionsAt, linesAt });
   const games = useMemo(() => {
-    const rows = (slate?.rows ?? []).filter((row) => (teamId ? row.teamId === teamId : true));
+    const rows = (slate?.rows ?? []).filter((row) => (teamId ? row.teamId === teamId : true) && !row.stats[stat].blockReason);
     return (slate?.games ?? [])
       .map((game) => ({
         game,
         rows: rows.filter((row) => row.gameId === game.gameId).sort(byProjectedPoints),
       }))
       .filter((item) => item.rows.length > 0);
-  }, [slate, teamId]);
+  }, [slate, teamId, stat]);
   const topDeltas = useMemo(() => highestDeltas(
-    (slate?.rows ?? []).map((row) => {
+    (slate?.rows ?? []).filter((row) => !row.stats[stat].blockReason).map((row) => {
       const cell = row.stats[stat];
       return {
         playerId: row.playerId,

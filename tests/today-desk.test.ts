@@ -24,6 +24,9 @@ test("homework sits above the player list and is not a table", () => {
   assert.ok(homeworkAt > 0 && homeworkAt < listAt);
   assert.match(panel, /aria-label="Homework"/);
   assert.match(panel, /<h2>Biggest deltas today<\/h2>/);
+  assert.match(today, /!row\.stats\[stat\]\.blockReason/);
+  assert.match(homework, /if \(row\.blocked\) continue/);
+  assert.match(homework, /blocked: Boolean\(row\.stats\[stat\]\.blockReason\)/);
   assert.match(panel, /<strong className="homework-team">\{row\.teamId\}<\/strong> vs \{row\.opponentId\}/);
   assert.match(css, /\.homework-team \{ font-weight: 700; \}/);
   assert.doesNotMatch(panel, /<h2>Homework<\/h2>/);
