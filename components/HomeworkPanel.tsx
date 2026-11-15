@@ -1,11 +1,20 @@
 "use client";
 
 import { useState, type CSSProperties, type KeyboardEvent } from "react";
+import { formatStake } from "../lib/bets";
 import type { SlateStat } from "../lib/engine";
 import type { HomeworkRow } from "../lib/homework";
+import type { LineupPlayer, LineupTeam } from "../lib/sources/rotowire-lineups";
+import { canonicalTeam } from "../lib/sources/teams";
 import Trace from "./Trace";
 
-export type HomeworkCard = HomeworkRow & { cell: SlateStat; locked: boolean };
+export type HomeworkCard = HomeworkRow & {
+  cell: SlateStat;
+  locked: boolean;
+  homeTeamId: string;
+  spread: number | null;
+  total: number | null;
+};
 
 function deltaStyle(edge: number | null): CSSProperties | undefined {
   if (edge == null || Math.abs(edge) < 0.05) return undefined;
@@ -25,8 +34,47 @@ function signed(value: number): string {
   return value > 0 ? `+${text}` : `−${text}`;
 }
 
-export default function HomeworkPanel({ rows }: { rows: HomeworkCard[] }) {
+function numberText(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function marketText(row: HomeworkCard): string {
+  const parts: string[] = [];
+  if (row.spread != null && row.homeTeamId) {
+    const sign = row.spread > 0 ? "+" : row.spread < 0 ? "−" : "";
+    parts.push(`${row.homeTeamId} ${sign}${numberText(Math.abs(row.spread))}`);
+  } else if (row.spread != null) {
+    const sign = row.spread > 0 ? "+" : row.spread < 0 ? "−" : "";
+    parts.push(`${sign}${numberText(Math.abs(row.spread))}`);
+  }
+  if (row.total != null) parts.push(`Total ${numberText(row.total)}`);
+  return parts.join(" · ");
+}
+
+function teamLineup(teams: readonly LineupTeam[] | null, teamId: string): LineupTeam | null {
+  if (!teams) return null;
+  const id = canonicalTeam(teamId) ?? teamId.trim().toUpperCase();
+  return teams.find((team) => team.teamId === id) ?? null;
+}
+
+function roleLabel(team: LineupTeam, player: LineupPlayer): string {
+  if (player.role === "bench") return "Bench";
+  return team.confirmed ? "Starting · confirmed" : "Starting";
+}
+
+export default function HomeworkPanel({
+  rows,
+  lineups,
+  busy,
+  onUnits,
+}: {
+  rows: HomeworkCard[];
+  lineups: readonly LineupTeam[] | null;
+  busy: boolean;
+  onUnits: (row: HomeworkCard, units: string) => void;
+}) {
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [lineupKey, setLineupKey] = useState<string | null>(null);
   return (
     <section className="homework card" aria-label="Homework">
       <h2>Biggest deltas today</h2>
@@ -35,8 +83,17 @@ export default function HomeworkPanel({ rows }: { rows: HomeworkCard[] }) {
       ) : rows.map((row) => {
         const key = `${row.playerId}|${row.gameId}|${row.stat}`;
         const open = openKey === key;
+        const lineupOpen = lineupKey === key;
+        const market = marketText(row);
+        const who = `${row.teamId} vs ${row.opponentId}`;
+        const team = teamLineup(lineups, row.teamId);
+        const starters = team?.players.filter((player) => player.role === "starter") ?? [];
+        const bench = team?.players.filter((player) => player.role === "bench") ?? [];
         function toggle() {
           setOpenKey(open ? null : key);
+        }
+        function toggleLineup() {
+          setLineupKey(lineupOpen ? null : key);
         }
         function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
           if (event.key !== "Enter" && event.key !== " ") return;
@@ -55,22 +112,65 @@ export default function HomeworkPanel({ rows }: { rows: HomeworkCard[] }) {
             >
               <div className="homework-who">
                 <span className="player">{row.playerName}</span>
-                <span className="meta">{row.teamId} vs {row.opponentId} · {row.statLabel}</span>
+                <span className="meta">{who} · {row.statLabel}</span>
               </div>
               <div className="homework-numbers">
                 <span className="homework-delta" style={deltaStyle(row.delta)}>{signed(row.delta)}</span>
                 <span className="homework-pill">{compact(row.projection, 2)} proj</span>
                 <span className="homework-pill">{compact(row.line, 1)} line</span>
               </div>
-              {row.role ? (
-                <p className="homework-role">
-                  {row.role}
-                  {row.injury ? <> · <span className="lineup-injury">{row.injury}</span></> : null}
-                </p>
-              ) : null}
+              {market ? <p className="homework-market">{market}</p> : null}
               {row.last5 ? <p className="homework-last">{row.last5}</p> : null}
               {row.note ? <p className="homework-note">{row.note}</p> : null}
             </div>
+            <div className="homework-actions">
+              <label className="homework-units">
+                Units
+                {row.locked ? (
+                  <span>{row.cell.units != null && row.cell.units > 0 ? formatStake(row.cell.units) : "—"}</span>
+                ) : (
+                  <input
+                    className="line-input"
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    min="0"
+                    aria-label={`${row.playerName} ${row.stat} bet`}
+                    defaultValue={row.cell.units ?? ""}
+                    key={`${key}|bet|${row.cell.units ?? ""}`}
+                    disabled={busy}
+                    onBlur={(event) => {
+                      const next = event.target.value.trim();
+                      const current = row.cell.units == null ? "" : String(row.cell.units);
+                      if (next === current) return;
+                      onUnits(row, next);
+                    }}
+                  />
+                )}
+              </label>
+              <button className="homework-lineup" type="button" aria-expanded={lineupOpen} onClick={toggleLineup}>
+                {lineups ? "Lineup" : "Lineup not checked"}
+              </button>
+            </div>
+            {lineupOpen ? (
+              <div className="homework-breakout">
+                <button className="homework-close" type="button" onClick={() => setLineupKey(null)}>Close</button>
+                {lineups == null ? (
+                  <p className="homework-note">The injury check has not been run this visit.</p>
+                ) : !team ? (
+                  <p className="homework-note">This team was not on the lineup check.</p>
+                ) : (
+                  <ul className="homework-lineup-list">
+                    {[...starters, ...bench].map((player) => (
+                      <li key={`${player.role}|${player.name}`}>
+                        {player.name} · {roleLabel(team, player)}
+                        {player.injury ? <> · <span className="lineup-injury">{player.injury}</span></> : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : null}
             {open ? (
               <div className="homework-breakout">
                 <button className="homework-close" type="button" onClick={() => setOpenKey(null)}>Close</button>

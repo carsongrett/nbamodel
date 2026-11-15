@@ -29,8 +29,14 @@ test("homework sits above the player list and is not a table", () => {
   assert.match(panel, /className="homework-pill"/);
   assert.match(panel, /proj<\/span>/);
   assert.match(panel, /line<\/span>/);
-  assert.match(panel, /className="homework-role"/);
+  assert.match(panel, /className="homework-market"/);
+  assert.match(panel, /Total \$\{numberText\(row\.total\)\}/);
+  assert.match(panel, /aria-label=\{`\$\{row\.playerName\} \$\{row\.stat\} bet`\}/);
+  assert.match(panel, /Lineup not checked/);
+  assert.match(panel, /The injury check has not been run this visit/);
+  assert.match(panel, /Starting · confirmed/);
   assert.match(panel, /className="lineup-injury"/);
+  assert.doesNotMatch(panel, /className="homework-role"/);
   assert.match(panel, /className="homework-last"/);
   assert.match(panel, /className="homework-note"/);
   assert.ok(panel.indexOf("homework-last") < panel.indexOf("homework-note"));
@@ -84,25 +90,31 @@ test("over and under prices stay in the table and are not shown", () => {
   assert.match(css, /\.odds-col \{ display: none; \}/);
 });
 
-test("the status line is Running or an Updated time, never a player count", () => {
+test("the status line names Projections or Lines, never a player count", () => {
   const spot = between(today, '<section className="status"', "<HomeworkPanel");
   assert.doesNotMatch(spot, /Showing/);
   assert.doesNotMatch(spot, /players/);
   assert.doesNotMatch(today, /players on the board labeled/);
   assert.doesNotMatch(today, /No \$\{initialDate\} players stored/);
-  assert.match(today, /boardRun \? "Running"/);
-  assert.match(today, /formatUpdated\(savedStamp\)/);
+  assert.match(today, /runClock\(\{ running, projectionsAt, linesAt \}\)/);
+  assert.doesNotMatch(today, /formatUpdated\(/);
   assert.match(engine, /updatedAt: slateSavedAt\(db, date\)/);
 
   const post = between(today, "async function post", "function put");
-  assert.match(post, /url === "\/api\/projections" \|\| url === "\/api\/consensus"/);
-  assert.match(post, /setBoardRun\(true\)/);
-  assert.match(post, /setRanAt\(new Date\(\)\)/);
+  assert.match(post, /url === "\/api\/projections" \? "Projections" : url === "\/api\/consensus" \? "Lines"/);
+  assert.match(post, /setRunning\(runName\)/);
+  assert.match(post, /setProjectionsAt\(new Date\(\)\)/);
+  assert.match(post, /setLinesAt\(new Date\(\)\)/);
+  assert.doesNotMatch(post, /setRanAt/);
 
   const check = between(today, "async function checkLineups", "function lineupNote");
-  assert.match(check, /setBoardRun\(true\)/);
-  assert.match(check, /setRanAt\(new Date\(\)\)/);
+  assert.doesNotMatch(check, /setRunning/);
+  assert.doesNotMatch(check, /setProjectionsAt/);
+  assert.doesNotMatch(check, /setLinesAt/);
+  assert.doesNotMatch(check, /setRanAt/);
   assert.doesNotMatch(check, /labeled/);
+
+  assert.match(today, /put\("\/api\/bets"/);
 });
 
 test("the Import card is off the Today page", () => {
