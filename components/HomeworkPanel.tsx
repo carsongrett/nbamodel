@@ -89,9 +89,6 @@ export default function HomeworkPanel({
         const open = openKey === key;
         const lineupOpen = lineupKey === key;
         const market = marketText(row);
-        const team = teamLineup(lineups, row.teamId);
-        const starters = team?.players.filter((player) => player.role === "starter") ?? [];
-        const bench = team?.players.filter((player) => player.role === "bench") ?? [];
         function toggle() {
           setOpenKey(open ? null : key);
         }
@@ -160,23 +157,7 @@ export default function HomeworkPanel({
               </button>
             </div>
             {lineupOpen ? (
-              <div className="homework-breakout">
-                <button className="homework-close" type="button" onClick={() => setLineupKey(null)}>Close</button>
-                {lineups == null ? (
-                  <p className="homework-note">The injury check has not been run this visit.</p>
-                ) : !team ? (
-                  <p className="homework-note">This team was not on the lineup check.</p>
-                ) : (
-                  <ul className="homework-lineup-list">
-                    {[...starters, ...bench].map((player) => (
-                      <li key={`${player.role}|${player.name}`}>
-                        {lineupName(player, roleLabel(team, player))}
-                        {player.injury ? <> · <span className="lineup-injury">{player.injury}</span></> : null}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+              <LineupBreakout lineups={lineups} teamIds={[row.teamId]} onClose={() => setLineupKey(null)} />
             ) : null}
             {open ? (
               <div className="homework-breakout">
@@ -188,5 +169,45 @@ export default function HomeworkPanel({
         );
       })}
     </section>
+  );
+}
+
+export function LineupBreakout({
+  lineups,
+  teamIds,
+  onClose,
+}: {
+  lineups: readonly LineupTeam[] | null;
+  teamIds: readonly string[];
+  onClose: () => void;
+}) {
+  return (
+    <div className="homework-breakout">
+      <button className="homework-close" type="button" onClick={onClose}>Close</button>
+      {lineups == null ? (
+        <p className="homework-note">The injury check has not been run this visit.</p>
+      ) : teamIds.map((teamId) => {
+        const team = teamLineup(lineups, teamId);
+        const starters = team?.players.filter((player) => player.role === "starter") ?? [];
+        const bench = team?.players.filter((player) => player.role === "bench") ?? [];
+        return (
+          <div key={teamId}>
+            {teamIds.length > 1 ? <p className="homework-market">{teamId}</p> : null}
+            {!team ? (
+              <p className="homework-note">This team was not on the lineup check.</p>
+            ) : (
+              <ul className="homework-lineup-list">
+                {[...starters, ...bench].map((player) => (
+                  <li key={`${teamId}|${player.role}|${player.name}`}>
+                    {lineupName(player, roleLabel(team, player))}
+                    {player.injury ? <> · <span className="lineup-injury">{player.injury}</span></> : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }

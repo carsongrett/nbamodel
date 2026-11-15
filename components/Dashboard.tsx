@@ -5,11 +5,11 @@ import type { Settings, SlateGame, SlateView, Stat } from "../lib/engine";
 import { formatStake } from "../lib/bets";
 import { highestDeltas } from "../lib/highest-deltas";
 import { candidatesFromSlate, homeworkRows, type HomeworkLog } from "../lib/homework";
-import { noteForPlayer, type LineupTeam } from "../lib/sources/rotowire-lineups";
+import { lineupPlayer, noteForPlayer, type LineupTeam } from "../lib/sources/rotowire-lineups";
 import { runClock } from "../lib/updated";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
-import HomeworkPanel from "./HomeworkPanel";
+import HomeworkPanel, { LineupBreakout } from "./HomeworkPanel";
 import Trace from "./Trace";
 
 type Board = SlateView & { priorGames?: HomeworkLog[] };
@@ -106,13 +106,32 @@ function gameOdds(game: SlateGame): string {
 
 const INJURY_LABELS = new Set(["Questionable", "Probable", "Doubtful", "Out", "Out for season"]);
 
-function LineupNote({ note }: { note: string }) {
+function NoteParts({ note }: { note: string }) {
   const parts = note.split(" · ");
+  return parts.map((part, index) => {
+    const word = INJURY_LABELS.has(part) ? <span className="lineup-injury">{part}</span> : part;
+    return <span key={`${index}-${part}`}>{index > 0 ? " · " : null}{word}</span>;
+  });
+}
+
+function LineupNote({ note }: { note: string }) {
+  return <span className="lineup-note"><NoteParts note={note} /></span>;
+}
+
+function GamePlayerName({ name, note, position }: { name: string; note: string | null; position: string | null }) {
+  if (note && position) {
+    return (
+      <div className="player">
+        {name}
+        <span className="lineup-note with-position"> · {position} · <NoteParts note={note} /></span>
+      </div>
+    );
+  }
   return (
-    <span className="lineup-note">{parts.map((part, index) => {
-      const word = INJURY_LABELS.has(part) ? <span className="lineup-injury">{part}</span> : part;
-      return <span key={`${index}-${part}`}>{index > 0 ? " · " : null}{word}</span>;
-    })}</span>
+    <div className="player">
+      {name}
+      {note ? <LineupNote note={note} /> : null}
+    </div>
   );
 }
 
@@ -146,6 +165,7 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   const [settings, setSettings] = useState<Settings | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [lineupTeams, setLineupTeams] = useState<LineupTeam[] | null>(null);
+  const [gameLineupId, setGameLineupId] = useState<string | null>(null);
   const [pendingRun, setPendingRun] = useState<{ label: string; url: string; pending: string } | null>(null);
 
   useEffect(() => {
@@ -248,6 +268,13 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
   function lineupNote(teamId: string, playerName: string): string | null {
     if (!lineupTeams) return null;
     return noteForPlayer(lineupTeams, teamId, playerName);
+  }
+
+  function lineupSpot(teamId: string, playerName: string): { note: string | null; position: string | null } {
+    if (!lineupTeams) return { note: null, position: null };
+    const found = lineupPlayer(lineupTeams, teamId, playerName);
+    if (!found) return { note: null, position: null };
+    return { note: noteForPlayer(lineupTeams, teamId, playerName), position: found.player.position };
   }
 
   const slate = payload?.slate;
@@ -373,9 +400,32 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
               <span className="player">
                 {game.label}
                 {game.tipLabel ? <span className="game-time">{game.tipLabel}</span> : null}
+                <button
+                  className="homework-lineup game-lineup-button"
+                  type="button"
+                  aria-expanded={gameLineupId === game.gameId}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const opening = gameLineupId !== game.gameId;
+                    const details = event.currentTarget.closest("details");
+                    if (opening && details) details.open = true;
+                    setGameLineupId(opening ? game.gameId : null);
+                  }}
+                >
+                  {lineupTeams ? "Lineup" : "Lineup not checked"}
+                </button>
               </span>
               <span className="game-odds">{gameOdds(game)}</span>
             </summary>
+            {gameLineupId === game.gameId ? (
+              <LineupBreakout
+                lineups={lineupTeams}
+                teamIds={[game.awayTeamId, game.homeTeamId]}
+                onClose={() => setGameLineupId(null)}
+              />
+            ) : null}
             <div className="table-wrap game-table">
               <table>
                 <thead>
@@ -394,14 +444,11 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
                   {rows.map((row) => {
                     const cell = row.stats[stat];
                     const key = `${row.playerId}|${row.gameId}`;
-                    const note = lineupNote(row.teamId, row.playerName);
+                    const spot = lineupSpot(row.teamId, row.playerName);
                     return (
                       <tr key={key}>
                         <td>
-                          <div className="player">
-                            {row.playerName}
-                            {note ? <LineupNote note={note} /> : null}
-                          </div>
+                          <GamePlayerName name={row.playerName} note={spot.note} position={spot.position} />
                           {cell.flags.filter((flag) => flag.includes("missing") && flag.includes("baseline")).map((flag) => (
                             <div className="meta" key={flag}>{flag}</div>
                           ))}
