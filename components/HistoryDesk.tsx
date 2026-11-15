@@ -86,8 +86,10 @@ function DistanceSet({ period, groups }: { period: string; groups: readonly Line
     hitRate: null as number | null,
   }));
   return (
-    <div className="line-distance-set">
-      <h3>{period}</h3>
+    <details className="line-distance-set">
+      <summary>
+        <h3>{period}</h3>
+      </summary>
       <div className="line-distance-row">
         {boxes.map((group) => {
           const loaded = group.wins != null && group.losses != null;
@@ -103,7 +105,7 @@ function DistanceSet({ period, groups }: { period: string; groups: readonly Line
           );
         })}
       </div>
-    </div>
+    </details>
   );
 }
 
