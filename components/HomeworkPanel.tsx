@@ -3,7 +3,7 @@
 import { useState, type CSSProperties, type KeyboardEvent } from "react";
 import { formatStake } from "../lib/bets";
 import type { SlateStat } from "../lib/engine";
-import type { HomeworkRow } from "../lib/homework";
+import { lastFifteenMpgLabel, type HomeworkLog, type HomeworkRow } from "../lib/homework";
 import type { LineupPlayer, LineupTeam } from "../lib/sources/rotowire-lineups";
 import { canonicalTeam } from "../lib/sources/teams";
 import Trace from "./Trace";
@@ -69,11 +69,13 @@ function lineupName(player: LineupPlayer, role: string): string {
 export default function HomeworkPanel({
   rows,
   lineups,
+  logs,
   busy,
   onUnits,
 }: {
   rows: HomeworkCard[];
   lineups: readonly LineupTeam[] | null;
+  logs: readonly HomeworkLog[];
   busy: boolean;
   onUnits: (row: HomeworkCard, units: string) => void;
 }) {
@@ -157,7 +159,7 @@ export default function HomeworkPanel({
               </button>
             </div>
             {lineupOpen ? (
-              <LineupBreakout lineups={lineups} teamIds={[row.teamId]} onClose={() => setLineupKey(null)} />
+              <LineupBreakout lineups={lineups} teamIds={[row.teamId]} logs={logs} onClose={() => setLineupKey(null)} />
             ) : null}
             {open ? (
               <div className="homework-breakout">
@@ -175,10 +177,12 @@ export default function HomeworkPanel({
 export function LineupBreakout({
   lineups,
   teamIds,
+  logs,
   onClose,
 }: {
   lineups: readonly LineupTeam[] | null;
   teamIds: readonly string[];
+  logs: readonly HomeworkLog[];
   onClose: () => void;
 }) {
   return (
@@ -197,12 +201,16 @@ export function LineupBreakout({
               <p className="homework-note">This team was not on the lineup check.</p>
             ) : (
               <ul className="homework-lineup-list">
-                {[...starters, ...bench].map((player) => (
-                  <li key={`${teamId}|${player.role}|${player.name}`}>
-                    {lineupName(player, roleLabel(team, player))}
-                    {player.injury ? <> · <span className="lineup-injury">{player.injury}</span></> : null}
-                  </li>
-                ))}
+                {[...starters, ...bench].map((player) => {
+                  const mpg = lastFifteenMpgLabel(logs, player.name, teamId);
+                  return (
+                    <li key={`${teamId}|${player.role}|${player.name}`}>
+                      {lineupName(player, roleLabel(team, player))}
+                      {player.injury ? <> · <span className="lineup-injury">{player.injury}</span></> : null}
+                      {mpg ? ` · ${mpg}` : null}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

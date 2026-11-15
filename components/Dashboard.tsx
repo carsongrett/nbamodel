@@ -400,6 +400,7 @@ export default function Dashboard({
       <HomeworkPanel
         rows={homework}
         lineups={lineupTeams}
+        logs={slate?.priorGames ?? []}
         busy={busy}
         onUnits={(row, units) => {
           void put("/api/bets", { playerId: row.playerId, gameId: row.gameId, stat: row.stat, units }, "Saving the bet…");
@@ -438,6 +439,7 @@ export default function Dashboard({
               <LineupBreakout
                 lineups={lineupTeams}
                 teamIds={[game.awayTeamId, game.homeTeamId]}
+                logs={slate?.priorGames ?? []}
                 onClose={() => setGameLineupId(null)}
               />
             ) : null}
