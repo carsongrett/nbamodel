@@ -35,6 +35,8 @@ test("homework sits above the player list and is not a table", () => {
   assert.match(panel, /Lineup not checked/);
   assert.match(panel, /The injury check has not been run this visit/);
   assert.match(panel, /Starting · confirmed/);
+  assert.match(panel, /\$\{player\.name\} · \$\{player\.position\} · \$\{role\}/);
+  assert.match(panel, /player\.position \?/);
   assert.match(panel, /className="lineup-injury"/);
   assert.doesNotMatch(panel, /className="homework-role"/);
   assert.match(panel, /className="homework-last"/);
