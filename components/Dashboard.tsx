@@ -6,7 +6,7 @@ import { formatStake } from "../lib/bets";
 import { highestDeltas } from "../lib/highest-deltas";
 import { candidatesFromSlate, homeworkRows, type HomeworkLog } from "../lib/homework";
 import { noteForPlayer, type LineupTeam } from "../lib/sources/rotowire-lineups";
-import { runClock } from "../lib/updated";
+import { clockInstant, runClock } from "../lib/updated";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
 import HomeworkPanel from "./HomeworkPanel";
@@ -133,14 +133,24 @@ function byProjectedPoints(
   return right - left || a.playerName.localeCompare(b.playerName);
 }
 
-export default function Dashboard({ initialDate, authConfigured }: { initialDate: string; authConfigured: boolean }) {
+export default function Dashboard({
+  initialDate,
+  authConfigured,
+  initialProjectionsAt = null,
+  initialLinesAt = null,
+}: {
+  initialDate: string;
+  authConfigured: boolean;
+  initialProjectionsAt?: string | null;
+  initialLinesAt?: string | null;
+}) {
   const date = initialDate;
   const [stat, setStat] = useState<Stat>("points");
   const [teamId, setTeamId] = useState("");
   const [payload, setPayload] = useState<Payload | null>(null);
   const [running, setRunning] = useState<"Projections" | "Lines" | null>(null);
-  const [projectionsAt, setProjectionsAt] = useState<Date | null>(null);
-  const [linesAt, setLinesAt] = useState<Date | null>(null);
+  const [projectionsAt, setProjectionsAt] = useState<Date | null>(clockInstant(initialProjectionsAt));
+  const [linesAt, setLinesAt] = useState<Date | null>(clockInstant(initialLinesAt));
   const [fault, setFault] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -159,7 +169,12 @@ export default function Dashboard({ initialDate, authConfigured }: { initialDate
       const body = (await response.json()) as Payload;
       if (cancel) return;
       setPayload(body);
-      if (body.slate) setSettings(settingsForSliders(body.slate.settings));
+      if (body.slate) {
+        const slate = body.slate;
+        setSettings(settingsForSliders(slate.settings));
+        setProjectionsAt((current) => current ?? clockInstant(slate.projectionsAt));
+        setLinesAt((current) => current ?? clockInstant(slate.linesAt));
+      }
       if (!response.ok) {
         setFault(body.error || "The slate could not be loaded.");
         return;

@@ -3,6 +3,13 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const today = readFileSync(new URL("../components/Dashboard.tsx", import.meta.url), "utf8");
+const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+const projectionsRoute = readFileSync(new URL("../app/api/projections/route.ts", import.meta.url), "utf8");
+const linesRoute = readFileSync(new URL("../app/api/consensus/route.ts", import.meta.url), "utf8");
+const settingsRoute = readFileSync(new URL("../app/api/settings/route.ts", import.meta.url), "utf8");
+const betsRoute = readFileSync(new URL("../app/api/bets/route.ts", import.meta.url), "utf8");
+const lineupsRoute = readFileSync(new URL("../app/api/lineups/route.ts", import.meta.url), "utf8");
+const storeSource = readFileSync(new URL("../lib/store.ts", import.meta.url), "utf8");
 const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const panel = readFileSync(new URL("../components/HomeworkPanel.tsx", import.meta.url), "utf8");
 const homework = readFileSync(new URL("../lib/homework.ts", import.meta.url), "utf8");
@@ -114,6 +121,20 @@ test("the status line names Projections or Lines, never a player count", () => {
   assert.match(today, /runClock\(\{ running, projectionsAt, linesAt \}\)/);
   assert.doesNotMatch(today, /formatUpdated\(/);
   assert.match(engine, /updatedAt: slateSavedAt\(db, date\)/);
+  assert.match(today, /useState<Date \| null>\(clockInstant\(initialProjectionsAt\)\)/);
+  assert.match(today, /useState<Date \| null>\(clockInstant\(initialLinesAt\)\)/);
+  assert.match(today, /setProjectionsAt\(\(current\) => current \?\? clockInstant\(slate\.projectionsAt\)\)/);
+  assert.match(today, /setLinesAt\(\(current\) => current \?\? clockInstant\(slate\.linesAt\)\)/);
+  assert.match(page, /initialProjectionsAt=\{slate\.projectionsAt\}/);
+  assert.match(page, /initialLinesAt=\{slate\.linesAt\}/);
+  assert.match(projectionsRoute, /finishRun\(next, "projections", new Date\(\)\.toISOString\(\)\)/);
+  assert.match(linesRoute, /finishRun\(committed\.db, "lines", new Date\(\)\.toISOString\(\)\)/);
+  assert.doesNotMatch(settingsRoute, /finishRun/);
+  assert.doesNotMatch(betsRoute, /finishRun/);
+  assert.doesNotMatch(lineupsRoute, /finishRun/);
+  assert.match(storeSource, /projections_finished_at: stamps\.projectionsAt/);
+  assert.match(storeSource, /lines_finished_at: stamps\.linesAt/);
+  assert.match(storeSource, /upsertSettings\(db\.settings, db\.runStamps/);
 
   const post = between(today, "async function post", "function put");
   assert.match(post, /url === "\/api\/projections" \? "Projections" : url === "\/api\/consensus" \? "Lines"/);

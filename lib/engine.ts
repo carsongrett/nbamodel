@@ -1,5 +1,6 @@
 import { normalizePersonName } from "./sources/names";
 import { canonicalTeam, matchupGameId } from "./sources/teams";
+import { isoInstant } from "./updated";
 
 export const CURRENT_SEASON = "2026-27";
 
@@ -43,6 +44,12 @@ export type FormulaSettings = {
 export type Settings = FormulaSettings & {
   /** Dollars in one unit for a bet saved from now on. Each saved bet keeps its own size. */
   dollarsPerUnit: number;
+};
+
+/** When Projections and Lines last finished. Not a formula input. */
+export type RunStamps = {
+  projectionsAt: string | null;
+  linesAt: string | null;
 };
 
 /** Active workbook divisors are column C on the model sheet, not the unused column B options. */
@@ -279,6 +286,8 @@ export type Database = {
   oppRebounds: OppRebound[];
   vegas: Vegas[];
   settings: Settings;
+  /** Finish times for the Projections and Lines buttons. Stored on the settings row. */
+  runStamps: RunStamps;
   overrides: MinutesOverride[];
   pregame: PregameStat[];
   projectionInputs: ProjectionInput[];
@@ -331,6 +340,7 @@ export function emptyDatabase(): Database {
     oppRebounds: [],
     vegas: [],
     settings: { ...DEFAULT_SETTINGS },
+    runStamps: { projectionsAt: null, linesAt: null },
     overrides: [],
     pregame: [],
     projectionInputs: [],
@@ -2244,6 +2254,10 @@ export type SlateView = {
   research: Finding[];
   /** Newest stored stamp for this date's projections, lines, or saved rows. Null when none exist. */
   updatedAt: string | null;
+  /** When Projections last finished and was saved. Null until then. */
+  projectionsAt: string | null;
+  /** When Lines last finished and was saved. Null until then. */
+  linesAt: string | null;
   homeworkStories: HomeworkStoryNote[];
 };
 
@@ -2474,6 +2488,20 @@ export function slateSavedAt(db: Database, date: string): string | null {
   return Number.isFinite(best) && best > -Infinity ? new Date(best).toISOString() : null;
 }
 
+/** Remember one button's finish time. The other time stays. An invalid instant is ignored. */
+export function finishRun(db: Database, button: "projections" | "lines", at: string): Database {
+  const iso = isoInstant(at);
+  if (!iso) return db;
+  const current = db.runStamps ?? { projectionsAt: null, linesAt: null };
+  return {
+    ...db,
+    runStamps: {
+      projectionsAt: button === "projections" ? iso : current.projectionsAt,
+      linesAt: button === "lines" ? iso : current.linesAt,
+    },
+  };
+}
+
 export function buildSlate(db: Database, date: string): SlateView {
   db = canonicalizeDatabase(db);
   const teamName = (id: string) => db.teams.find((t) => idsEqual(t.teamId, id))?.name ?? id;
@@ -2553,6 +2581,8 @@ export function buildSlate(db: Database, date: string): SlateView {
     summaries,
     research: db.research.filter((f) => f.slateDate === date),
     updatedAt: slateSavedAt(db, date),
+    projectionsAt: db.runStamps?.projectionsAt ?? null,
+    linesAt: db.runStamps?.linesAt ?? null,
     homeworkStories: (db.homeworkStories ?? [])
       .filter((row) => row.slateDate === date && row.text.trim())
       .map((row) => ({

@@ -1,8 +1,9 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { canonicalizeDatabase, DEFAULT_SETTINGS, emptyDatabase, mergeSettings, type Actual, type Database, type Dvp, type DvpWindow, type Finding, type Game, type HomeworkStory, type IdMap, type MinutesOverride, type OppRebound, type OutsideProjection, type PaceRow, type Player, type PlayerRate, type PregameStat, type PropLine, type Settings, type Team, type Vegas } from "./engine";
+import { canonicalizeDatabase, DEFAULT_SETTINGS, emptyDatabase, mergeSettings, type Actual, type Database, type Dvp, type DvpWindow, type Finding, type Game, type HomeworkStory, type IdMap, type MinutesOverride, type OppRebound, type OutsideProjection, type PaceRow, type Player, type PlayerRate, type PregameStat, type PropLine, type RunStamps, type Settings, type Team, type Vegas } from "./engine";
 import { num, projectionFromStoreRow, projectionInputFromStoreRow, projectionInputToStoreRow, selectAllRows, str } from "./store-pages";
+import { isoInstant } from "./updated";
 
 export type StorageMode = "local" | "supabase";
 
@@ -58,6 +59,7 @@ class FileStore implements Store {
         ...emptyDatabase(),
         ...parsed,
         settings: mergeSettings(parsed.settings),
+        runStamps: normalizeRunStamps(parsed.runStamps),
         projectionInputs: Array.isArray(parsed.projectionInputs) ? parsed.projectionInputs : [],
         homeworkStories: Array.isArray(parsed.homeworkStories) ? parsed.homeworkStories : [],
       };
@@ -227,6 +229,10 @@ class SupabaseStore implements Store {
         minRateGames: num(settingRow.min_rate_games) ?? undefined,
         dollarsPerUnit: num(settingRow.dollars_per_unit) ?? undefined,
       }),
+      runStamps: {
+        projectionsAt: isoInstant(settingRow.projections_finished_at),
+        linesAt: isoInstant(settingRow.lines_finished_at),
+      },
       overrides: overrides.map((row) => ({ playerId: String(row.player_id), gameId: String(row.game_id), minutes: num(row.minutes) ?? 0 })),
       pregame: pregame.map((row) => ({
         playerId: String(row.player_id),
@@ -352,7 +358,7 @@ class SupabaseStore implements Store {
     await this.replace("vegas", db.vegas.map((row: Vegas) => ({
       game_id: row.gameId, team_id: row.teamId, season: row.season, spread: row.spread, total: row.total, source_timestamp: row.sourceTimestamp,
     })), ["game_id", "team_id"]);
-    await this.upsertSettings(db.settings);
+    await this.upsertSettings(db.settings, db.runStamps ?? { projectionsAt: null, linesAt: null });
     await this.replace("overrides", db.overrides.map((row: MinutesOverride) => ({
       player_id: row.playerId, game_id: row.gameId, minutes: row.minutes,
     })), ["player_id", "game_id"]);
@@ -426,19 +432,34 @@ class SupabaseStore implements Store {
     }
   }
 
-  private async upsertSettings(settings: Settings): Promise<void> {
-    const row = settingsRow(settings);
-    try {
-      await this.upsert("settings", [row]);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      if (!message.includes("dollars_per_unit")) throw error;
-      if (settings.dollarsPerUnit !== DEFAULT_SETTINGS.dollarsPerUnit) {
-        throw new Error("Dollars per unit needs a database column. Run supabase/migrations/20261111120000_unit_dollars.sql in the Supabase SQL editor, then save settings again.");
+  private async upsertSettings(settings: Settings, stamps: RunStamps): Promise<void> {
+    let row = settingsRow(settings, stamps);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        await this.upsert("settings", [row]);
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        let next = row;
+        let stripped = false;
+        if (message.includes("projections_finished_at") || message.includes("lines_finished_at")) {
+          const { projections_finished_at: _projections, lines_finished_at: _lines, ...rest } = next;
+          next = rest;
+          stripped = true;
+        }
+        if (message.includes("dollars_per_unit")) {
+          if (settings.dollarsPerUnit !== DEFAULT_SETTINGS.dollarsPerUnit) {
+            throw new Error("Dollars per unit needs a database column. Run supabase/migrations/20261111120000_unit_dollars.sql in the Supabase SQL editor, then save settings again.");
+          }
+          const { dollars_per_unit: _size, ...rest } = next;
+          next = rest;
+          stripped = true;
+        }
+        if (!stripped) throw error;
+        row = next;
       }
-      const { dollars_per_unit: _size, ...rest } = row;
-      await this.upsert("settings", [rest]);
     }
+    throw new Error("settings: could not save the settings row.");
   }
 
   private async replaceBetColumns(
@@ -532,7 +553,15 @@ function dvpWindow(value: unknown): DvpWindow | null {
   return value === "both" || value === "l15" || value === "l30" ? value : null;
 }
 
-function settingsRow(settings: Settings): Record<string, unknown> {
+function normalizeRunStamps(value: unknown): RunStamps {
+  const row = value && typeof value === "object" ? value as Partial<RunStamps> : {};
+  return {
+    projectionsAt: isoInstant(row.projectionsAt),
+    linesAt: isoInstant(row.linesAt),
+  };
+}
+
+function settingsRow(settings: Settings, stamps: RunStamps): Record<string, unknown> {
   return {
     id: 1,
     dvp_points_strength: settings.dvpPointsStrength,
@@ -547,5 +576,7 @@ function settingsRow(settings: Settings): Record<string, unknown> {
     min_recent_games: settings.minRecentGames,
     min_rate_games: settings.minRateGames,
     dollars_per_unit: settings.dollarsPerUnit,
+    projections_finished_at: stamps.projectionsAt,
+    lines_finished_at: stamps.linesAt,
   };
 }
