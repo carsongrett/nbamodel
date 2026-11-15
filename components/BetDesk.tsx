@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatDollars, formatRecord, formatSlateDay, formatStake, formatUnits, resultUnits, type BetTracking, type BetWindows } from "../lib/bets";
+import { formatDollars, formatRecord, formatSlateDay, formatStake, formatUnits, resultUnits, type BetTracking, type BetWindows, type CumulativeDollar } from "../lib/bets";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
 
@@ -20,8 +20,51 @@ function isTracking(body: Partial<BetTracking> & { ok?: boolean }): body is BetT
   return body.today != null && body.last7 != null && body.last30 != null && body.allTime != null
     && body.records != null
     && isWindow(body.dollars)
+    && Array.isArray(body.cumulativeDollars)
     && Array.isArray(body.settled)
     && Array.isArray(body.pending);
+}
+
+function cumulativeLine(points: readonly CumulativeDollar[]): { path: string; zero: string } | null {
+  if (points.length === 0) return null;
+  const width = 320;
+  const height = 36;
+  const pad = 3;
+  const values = points.map((point) => point.dollars);
+  let min = Math.min(0, ...values);
+  let max = Math.max(0, ...values);
+  if (max === min) {
+    min -= 1;
+    max += 1;
+  }
+  const span = max - min;
+  const yAt = (value: number) => pad + (1 - (value - min) / span) * (height - pad * 2);
+  const path = points.length === 1
+    ? `${pad},${yAt(points[0].dollars).toFixed(2)} ${width - pad},${yAt(points[0].dollars).toFixed(2)}`
+    : points.map((point, index) => {
+      const x = pad + (index / (points.length - 1)) * (width - pad * 2);
+      return `${x.toFixed(2)},${yAt(point.dollars).toFixed(2)}`;
+    }).join(" ");
+  const zero = yAt(0).toFixed(2);
+  return { path, zero: `0,${zero} ${width},${zero}` };
+}
+
+function CumulativeDollars({ points }: { points: readonly CumulativeDollar[] }) {
+  const line = cumulativeLine(points);
+  const end = points.length > 0 ? points[points.length - 1].dollars : null;
+  const direction = end == null ? "" : end > 0 ? "units-up" : end < 0 ? "units-down" : "";
+  return (
+    <section className="card cumulative-dollars" aria-label="Cumulative dollars, all settled bets">
+      <h2>Cumulative dollars, all settled bets</h2>
+      {line ? (
+        <svg className="cumulative-spark" viewBox="0 0 320 36" preserveAspectRatio="none" aria-hidden="true">
+          <polyline className="zero" points={line.zero} />
+          <polyline className="path" points={line.path} />
+        </svg>
+      ) : null}
+      <strong className={direction}>{end == null ? "—" : formatDollars(end)}</strong>
+    </section>
+  );
 }
 
 export default function BetDesk({ authConfigured }: { authConfigured: boolean }) {
@@ -87,10 +130,13 @@ export default function BetDesk({ authConfigured }: { authConfigured: boolean })
           );
         })}
       </section>
-      <section className="card bet-list" aria-label="Settled bets">
-        <h2>Settled</h2>
+      <CumulativeDollars points={totals?.cumulativeDollars ?? []} />
+      <details className="game bet-list" open aria-label="Settled bets">
+        <summary>
+          <span className="player">Settled</span>
+        </summary>
         {totals && totals.settled.length > 0 ? (
-          <div className="table-wrap">
+          <div className="table-wrap game-table">
             <table>
               <thead>
                 <tr>
@@ -115,7 +161,7 @@ export default function BetDesk({ authConfigured }: { authConfigured: boolean })
             </table>
           </div>
         ) : null}
-      </section>
+      </details>
       <section className="card bet-list" aria-label="Pending bets">
         <h2>Pending</h2>
         {totals && totals.pending.length > 0 ? (

@@ -120,6 +120,30 @@ export type PendingBetRow = {
   units: number;
 };
 
+export type CumulativeDollar = {
+  slateDate: string;
+  dollars: number;
+};
+
+/**
+ * Running dollars for every settled bet, oldest date first.
+ * Each step is that row’s units times its own size. Pending bets are left out.
+ */
+export function cumulativeSettledDollars(bets: readonly (SettledBet & { playerName?: string })[]): CumulativeDollar[] {
+  const steps: { slateDate: string; playerName: string; dollars: number }[] = [];
+  for (const bet of bets) {
+    const dollars = betDollars(bet.units, bet.grade, bet.unitDollars);
+    if (dollars == null) continue;
+    steps.push({ slateDate: bet.slateDate, playerName: bet.playerName ?? "", dollars });
+  }
+  steps.sort((a, b) => a.slateDate.localeCompare(b.slateDate) || a.playerName.localeCompare(b.playerName));
+  let running = 0;
+  return steps.map((step) => {
+    running += step.dollars;
+    return { slateDate: step.slateDate, dollars: running };
+  });
+}
+
 type NamedBet = SettledBet & { playerName: string };
 
 export function resultUnits(units: number, result: "Win" | "Loss" | "Push"): number {
@@ -231,6 +255,7 @@ export function betsFromDatabase(db: Database): SettledBet[] {
 export type BetTracking = BetWindows & {
   records: BetRecords;
   dollars: BetWindows;
+  cumulativeDollars: CumulativeDollar[];
   settled: SettledBetRow[];
   pending: PendingBetRow[];
 };
@@ -244,6 +269,7 @@ export function betTracking(db: Database, today: string): BetTracking {
     ...betWindowTotals(bets, today),
     records: betWindowRecords(bets, today),
     dollars: betWindowDollars(bets, today),
+    cumulativeDollars: cumulativeSettledDollars(named),
     settled: lists.settled,
     pending: lists.pending,
   };
