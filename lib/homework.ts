@@ -1,5 +1,5 @@
 import { canonicalizeDatabase, type Database, type SlateRow } from "./engine";
-import { lineupPlayer, noteForPlayer, type LineupTeam } from "./sources/rotowire-lineups";
+import { lineupNameKey, lineupPlayer, noteForPlayer, type LineupTeam } from "./sources/rotowire-lineups";
 
 export type HomeworkStat = "points" | "rebounds";
 
@@ -98,6 +98,30 @@ function numText(value: number): string {
 function minuteText(value: number): string {
   const tenth = Math.round(value * 10) / 10;
   return String(Math.round(tenth));
+}
+
+function matchLogPlayerId(logs: readonly HomeworkLog[], playerName: string, teamId: string): string | null {
+  const key = lineupNameKey(playerName);
+  if (!key) return null;
+  const team = teamId.trim().toUpperCase();
+  let hits = logs.filter((log) => lineupNameKey(log.playerName) === key);
+  const onTeam = team ? hits.filter((log) => log.teamId === team) : hits;
+  if (onTeam.length) hits = onTeam;
+  const ids = [...new Set(hits.map((log) => log.playerId))];
+  return ids.length === 1 ? ids[0] : null;
+}
+
+/** Mean of the last 15 stored games that have minutes. Fewer than 15 uses what exists. */
+export function lastFifteenMpgLabel(logs: readonly HomeworkLog[], playerName: string, teamId = ""): string | null {
+  const playerId = matchLogPlayerId(logs, playerName, teamId);
+  if (!playerId) return null;
+  const recent = logs
+    .filter((log) => log.playerId === playerId && finite(log.minutes))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.gameId.localeCompare(b.gameId))
+    .slice(-15);
+  if (recent.length === 0) return null;
+  const mean = recent.reduce((sum, log) => sum + (log.minutes as number), 0) / recent.length;
+  return `${minuteText(mean)} mpg`;
 }
 
 function splitRole(note: string | null): { role: string | null; injury: string | null } {

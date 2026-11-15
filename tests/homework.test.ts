@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { emptyDatabase, type Actual, type Game, type Player } from "../lib/engine";
-import { homeworkRows, priorGames, type HomeworkCandidate, type HomeworkLog, type HomeworkStat } from "../lib/homework";
+import { homeworkRows, lastFifteenMpgLabel, priorGames, type HomeworkCandidate, type HomeworkLog, type HomeworkStat } from "../lib/homework";
 import type { LineupTeam } from "../lib/sources/rotowire-lineups";
 
 const DATE = "2026-11-14";
@@ -325,6 +325,26 @@ test("injury tag stays on the role line and a bench player is not called a new s
   assert.equal(benched?.role, "Bench");
   assert.equal(benched?.injury, "Questionable");
   assert.equal(benched?.note, null);
+});
+
+test("lineup mpg is the mean of the last 15 stored minutes, rounded .5 up", () => {
+  const minutesLog = (date: string, minutes: number | null, playerId = "maxeyty01", playerName = "Tyrese Maxey") =>
+    log(playerId, playerName, date, 20, 4, { minutes, teamId: "PHI", position: "PG", gameId: `${date}|DET@PHI` });
+
+  const older = minutesLog("2026-10-01", 99);
+  const last15 = Array.from({ length: 15 }, (_, index) => minutesLog(`2026-10-${String(index + 2).padStart(2, "0")}`, 30));
+  assert.equal(lastFifteenMpgLabel([older, ...last15], "Tyrese Maxey", "PHI"), "30 mpg");
+
+  const halfUp = Array.from({ length: 15 }, (_, index) => minutesLog(`2026-11-${String(index + 1).padStart(2, "0")}`, 30.5));
+  assert.equal(lastFifteenMpgLabel(halfUp, "Tyrese Maxey", "PHI"), "31 mpg");
+
+  const few = [minutesLog("2026-11-01", 20), minutesLog("2026-11-02", 40)];
+  assert.equal(lastFifteenMpgLabel(few, "Tyrese Maxey", "PHI"), "30 mpg");
+  assert.equal(lastFifteenMpgLabel(few, "Nikola Jokic", "PHI"), null);
+
+  const mixed = [minutesLog("2026-11-01", null), minutesLog("2026-11-02", 31)];
+  assert.equal(lastFifteenMpgLabel(mixed, "Tyrese Maxey", "PHI"), "31 mpg");
+  assert.equal(lastFifteenMpgLabel([minutesLog("2026-11-01", null)], "Tyrese Maxey", "PHI"), null);
 });
 
 test("prior games are stored results from before the slate, without invented minutes", () => {
