@@ -24,6 +24,12 @@ export type BetPlayer = {
   units: number;
   result: "Win" | "Loss" | "Push";
   dollars: number;
+  /** Saved pregame line. Null when that save has none. */
+  line: number | null;
+  /** Saved pregame projection. Null when that save has none. */
+  projection: number | null;
+  /** Stored actual for this stat. Null when the result has none. */
+  actual: number | null;
 };
 
 /** Even money. A win pays the units, a loss costs them, and a push is 0. Anything unsettled is left out. */
@@ -247,7 +253,15 @@ type BetRow = {
   playerId: string;
   gameId: string;
   playerName: string;
-  stats: Record<Stat, { source: string; units?: number | null; unitDollars?: number | null; grade: Grade }>;
+  stats: Record<Stat, {
+    source: string;
+    units?: number | null;
+    unitDollars?: number | null;
+    grade: Grade;
+    line?: number | null;
+    projection?: number | null;
+    actual?: number | null;
+  }>;
 };
 
 /** Saved bets on this stat whose result is a win, a loss, or a push. */
@@ -266,9 +280,16 @@ export function betPlayers(rows: readonly BetRow[], stat: Stat): BetPlayer[] {
       units: cell.units,
       result,
       dollars: betDollars(cell.units, cell.grade, cell.unitDollars) ?? 0,
+      line: finiteNumber(cell.line),
+      projection: finiteNumber(cell.projection),
+      actual: finiteNumber(cell.actual),
     });
   }
   return listed;
+}
+
+function finiteNumber(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 export function formatUnits(value: number): string {

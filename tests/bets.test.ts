@@ -303,12 +303,45 @@ test("history lists only settled bets", () => {
     { playerId: "c", gameId: "g", playerName: "No Bet", stats: { points: { source: "saved", units: null, grade: "win" as const }, rebounds: { source: "saved", units: null, grade: "win" as const }, points_rebounds: { source: "saved", units: null, grade: "win" as const } } },
   ];
   assert.deepEqual(betPlayers(rows, "points"), [
-    { playerId: "a", gameId: "g", playerName: "Luka Doncic", units: 2, dollars: 10, result: "Win" },
+    { playerId: "a", gameId: "g", playerName: "Luka Doncic", units: 2, dollars: 10, result: "Win", line: null, projection: null, actual: null },
   ]);
   const priced = betPlayers([
     { playerId: "a", gameId: "g", playerName: "Luka Doncic", stats: { points: { source: "saved", units: 2, unitDollars: 10, grade: "loss" as const }, rebounds: { source: "saved", units: null, grade: "loss" as const }, points_rebounds: { source: "saved", units: 1, unitDollars: 5, grade: "push" as const } } },
   ], "points");
   assert.equal(priced[0]?.dollars, -20);
+  assert.equal(priced[0]?.result, "Loss");
+});
+
+test("a history bet keeps the saved line, projection, and actual without changing the result", () => {
+  const cell = (grade: "win" | "loss" | "push", extra: { line?: number | null; projection?: number | null; actual?: number | null } = {}) => ({
+    source: "saved",
+    units: 1,
+    grade,
+    line: extra.line === undefined ? 24.5 : extra.line,
+    projection: extra.projection === undefined ? 28.2 : extra.projection,
+    actual: extra.actual === undefined ? 30 : extra.actual,
+  });
+  const empty = { source: "saved", units: null, grade: "win" as const };
+  const rows = [{
+    playerId: "a",
+    gameId: "g",
+    playerName: "Darius Acuff Jr.",
+    stats: {
+      points: cell("win"),
+      rebounds: cell("push", { line: 7.5, projection: null, actual: null }),
+      points_rebounds: empty,
+    },
+  }];
+  const points = betPlayers(rows, "points")[0];
+  assert.equal(points?.result, "Win");
+  assert.equal(points?.line, 24.5);
+  assert.equal(points?.projection, 28.2);
+  assert.equal(points?.actual, 30);
+  const rebounds = betPlayers(rows, "rebounds")[0];
+  assert.equal(rebounds?.result, "Push");
+  assert.equal(rebounds?.line, 7.5);
+  assert.equal(rebounds?.projection, null);
+  assert.equal(rebounds?.actual, null);
 });
 
 test("the desk drops the opponent column and adds bet tracking", () => {
@@ -325,6 +358,14 @@ test("the desk drops the opponent column and adds bet tracking", () => {
   assert.match(betInput, /disabled=\{busy\}/);
   assert.doesNotMatch(betInput, /cell\.line/);
   assert.match(history, /<h2>Bet players<\/h2>/);
+  const betTable = history.slice(history.indexOf('aria-label="Bet players"'), history.indexOf('className="game-list"'));
+  assert.match(betTable, /<th className="num">Line<\/th>/);
+  assert.match(betTable, /<th className="num">Projection<\/th>/);
+  assert.match(betTable, /<th className="num">Actual<\/th>/);
+  assert.match(betTable, /blankNum\(player\.line, 1\)/);
+  assert.match(betTable, /blankNum\(player\.projection\)/);
+  assert.match(betTable, /blankNum\(player\.actual, 1\)/);
+  assert.ok(betTable.indexOf(">Line<") < betTable.indexOf(">Units<"));
   assert.match(history, /<th className="num">Units<\/th>/);
   assert.match(nav, /href="\/bets"/);
   assert.match(nav, /Bet tracking/);
