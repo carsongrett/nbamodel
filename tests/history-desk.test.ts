@@ -59,21 +59,24 @@ test("Adjustment settings starts closed and uses the game toggle", () => {
   assert.match(today, /label: "Minimum rate-sample games"/);
 });
 
-test("distance period headings start closed and show or hide their boxes", () => {
+test("This slate starts open and the other distance periods start closed", () => {
   const set = between(history, "function DistanceSet", "export default function HistoryDesk");
-  assert.match(set, /<details className="line-distance-set">/);
+  assert.match(set, /useState\(startOpen\)/);
+  assert.match(set, /<details className="line-distance-set" open=\{open\} onToggle=\{\(event\) => setOpen\(event\.currentTarget\.open\)\}>/);
   assert.match(set, /<summary>/);
   assert.match(set, /<h3>\{period\}<\/h3>/);
-  assert.doesNotMatch(set, /<details[^>]*\sopen[\s=>]/);
   const summary = between(set, "<summary", "</summary>");
   const boxes = set.slice(set.indexOf("</summary>"));
   assert.match(boxes, /className="line-distance-row"/);
   assert.doesNotMatch(summary, /line-distance-row/);
   const section = between(history, '<section className="line-distance"', "</section>");
-  assert.match(section, /period="This slate"/);
+  assert.match(section, /period="This slate" groups=\{view\.distance\} startOpen/);
   assert.match(section, /period="Last 7 days"/);
   assert.match(section, /period="Last 30 days"/);
   assert.match(section, /period="All time"/);
+  assert.doesNotMatch(section, /period="Last 7 days"[^/]*startOpen/);
+  assert.doesNotMatch(section, /period="Last 30 days"[^/]*startOpen/);
+  assert.doesNotMatch(section, /period="All time"[^/]*startOpen/);
   assert.doesNotMatch(history, /Cumulative win rate/);
   assert.doesNotMatch(history, /polyline/);
 });

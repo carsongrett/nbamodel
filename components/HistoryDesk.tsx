@@ -78,7 +78,8 @@ function pointsLabel(threshold: number): string {
   return threshold === 1 ? "At least 1 point" : `At least ${threshold} points`;
 }
 
-function DistanceSet({ period, groups }: { period: string; groups: readonly LineDistanceGroup[] | undefined }) {
+function DistanceSet({ period, groups, startOpen = false }: { period: string; groups: readonly LineDistanceGroup[] | undefined; startOpen?: boolean }) {
+  const [open, setOpen] = useState(startOpen);
   const boxes = groups ?? LINE_DISTANCE_THRESHOLDS.map((threshold) => ({
     threshold,
     wins: null as number | null,
@@ -86,7 +87,7 @@ function DistanceSet({ period, groups }: { period: string; groups: readonly Line
     hitRate: null as number | null,
   }));
   return (
-    <details className="line-distance-set">
+    <details className="line-distance-set" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>
         <h3>{period}</h3>
       </summary>
@@ -321,7 +322,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
             <section className="line-distance" aria-label="Hit rate by distance from the line">
               <h2>Distance from the line</h2>
               <p className="meta">Wins and losses in this filter. Distance is how far the projection sits from the line, above or below. Last 7 days, last 30 days, and all time use the selected stat. Last 7 days and last 30 days end on this slate and include it. Pushes stay out.</p>
-              <DistanceSet period="This slate" groups={view.distance} />
+              <DistanceSet period="This slate" groups={view.distance} startOpen />
               <DistanceSet period="Last 7 days" groups={distanceWindows?.last7} />
               <DistanceSet period="Last 30 days" groups={distanceWindows?.last30} />
               <DistanceSet period="All time" groups={distanceWindows?.allTime} />
