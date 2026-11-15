@@ -11,6 +11,7 @@ export default function Trace({ stat, locked, bare = false }: { stat: SlateStat;
   const dimers = stat.adjustments.find((adjustment) => adjustment.key === "dimers");
   const adjustments = stat.adjustments.filter((adjustment) => adjustment.key !== "sportsline" && adjustment.key !== "dimers");
   const showSportsline = sportsline?.input != null;
+  const bothSources = showSportsline && typeof dimers?.input === "number" && stat.baseline != null;
   const body = (
     <div className="trace-body">
       {showSportsline ? (
@@ -22,9 +23,10 @@ export default function Trace({ stat, locked, bare = false }: { stat: SlateStat;
         <OpenStep
           label="Dimers"
           value={dimers.input == null ? "missing" : fmt(dimers.input)}
-          detail={dimers.detail}
+          detail={bothSources ? null : dimers.detail}
         />
       ) : null}
+      {bothSources ? <Step label="65/35 blend" value={fmt(stat.baseline)} detail={null} /> : null}
       {adjustments.map((adjustment) => (
         <Step
           key={adjustment.key}
