@@ -113,6 +113,12 @@ export type SettledBetRow = {
   units: number;
   dollars: number;
   result: "Win" | "Loss" | "Push";
+  /** Saved pregame line. Null when that save has none. */
+  line: number | null;
+  /** Saved pregame projection. Null when that save has none. */
+  projection: number | null;
+  /** Stored actual for this stat. Null when the result has none. */
+  actual: number | null;
 };
 
 export type PendingBetRow = {
@@ -144,7 +150,12 @@ export function cumulativeSettledDollars(bets: readonly (SettledBet & { playerNa
   });
 }
 
-type NamedBet = SettledBet & { playerName: string };
+type NamedBet = SettledBet & {
+  playerName: string;
+  line?: number | null;
+  projection?: number | null;
+  actual?: number | null;
+};
 
 export function resultUnits(units: number, result: "Win" | "Loss" | "Push"): number {
   if (result === "Loss") return -units;
@@ -213,6 +224,9 @@ export function betLists(bets: readonly NamedBet[], today: string): { settled: S
         units: bet.units,
         dollars: betDollars(bet.units, bet.grade, bet.unitDollars) ?? 0,
         result,
+        line: finiteNumber(bet.line),
+        projection: finiteNumber(bet.projection),
+        actual: finiteNumber(bet.actual),
       });
     } else if (bet.grade === "unresolved") {
       pending.push({ playerName: bet.playerName, units: bet.units });
@@ -243,7 +257,16 @@ function namedBets(db: Database): NamedBet[] {
       gameFinal: game?.status === "final",
     });
     const playerName = db.players.find((item) => idsEqual(item.playerId, row.playerId))?.displayName ?? row.playerId;
-    return [{ slateDate: row.slateDate, units, grade: graded.grade, playerName, unitDollars: row.unitDollars }];
+    return [{
+      slateDate: row.slateDate,
+      units,
+      grade: graded.grade,
+      playerName,
+      unitDollars: row.unitDollars,
+      line: finiteNumber(row.line),
+      projection: finiteNumber(row.projection),
+      actual: actualNumber(actual, row.stat),
+    }];
   });
 }
 
