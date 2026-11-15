@@ -34,7 +34,10 @@ test("homework sits above the player list and is not a table", () => {
   assert.match(today, /!row\.stats\[stat\]\.blockReason/);
   assert.match(homework, /if \(row\.blocked\) continue/);
   assert.match(homework, /blocked: Boolean\(row\.stats\[stat\]\.blockReason\)/);
-  assert.match(panel, /<strong className="homework-team">\{row\.teamId\}<\/strong> vs \{row\.opponentId\}/);
+  assert.match(panel, /row\.playerName\}\{position \? ` · \$\{position\}` : ""\}/);
+  assert.match(panel, /\{position \? "· " : ""\}<strong className="homework-team">\{row\.teamId\}<\/strong> vs \{row\.opponentId\}/);
+  assert.match(panel, /function storedPosition/);
+  assert.match(panel, /lineupPlayer\(\[\.\.\.lineups\], teamId, playerName\)\?\.player\.position/);
   assert.match(css, /\.homework-team \{ font-weight: 700; \}/);
   assert.doesNotMatch(panel, /<h2>Homework<\/h2>/);
   assert.match(panel, /className="homework-delta"/);
