@@ -25,44 +25,118 @@ function isTracking(body: Partial<BetTracking> & { ok?: boolean }): body is BetT
     && Array.isArray(body.pending);
 }
 
-function cumulativeLine(points: readonly CumulativeDollar[]): { path: string; zero: string } | null {
-  if (points.length === 0) return null;
-  const width = 320;
-  const height = 36;
-  const pad = 3;
-  const values = points.map((point) => point.dollars);
-  let min = Math.min(0, ...values);
-  let max = Math.max(0, ...values);
-  if (max === min) {
-    min -= 1;
-    max += 1;
+type SquareLine = {
+  plotX: number;
+  plotY: number;
+  plotSize: number;
+  path: string;
+  dots: { x: number; y: number; value: string; anchor: "start" | "middle" | "end"; labelY: number }[];
+  yTicks: { y: number; label: string; zero: boolean }[];
+  xLabels: { x: number; label: string }[];
+};
+
+function niceBounds(min: number, max: number): { min: number; max: number; step: number } {
+  let low = min;
+  let high = max;
+  if (high === low) {
+    low -= 1;
+    high += 1;
   }
-  const span = max - min;
-  const yAt = (value: number) => pad + (1 - (value - min) / span) * (height - pad * 2);
+  const rough = (high - low) / 4;
+  const pow = Math.pow(10, Math.floor(Math.log10(Math.abs(rough))));
+  const fraction = rough / pow;
+  const nice = fraction >= 5 ? 10 : fraction >= 2 ? 5 : fraction >= 1 ? 2 : 1;
+  const step = nice * pow;
+  const niceMin = Math.floor(low / step) * step;
+  const niceMax = Math.ceil(high / step) * step;
+  return { min: niceMin, max: niceMax === niceMin ? niceMin + step : niceMax, step };
+}
+
+function cumulativeSquare(points: readonly CumulativeDollar[]): SquareLine | null {
+  if (points.length === 0) return null;
+  const plotX = 92;
+  const plotY = 18;
+  const plotSize = 298;
+  const values = points.map((point) => point.dollars);
+  const bounds = niceBounds(Math.min(0, ...values), Math.max(0, ...values));
+  const span = bounds.max - bounds.min;
+  const inset = 8;
+  const yAt = (value: number) => plotY + inset + (1 - (value - bounds.min) / span) * (plotSize - inset * 2);
+  const xAt = (index: number) => points.length === 1
+    ? plotX + plotSize / 2
+    : plotX + inset + (index / (points.length - 1)) * (plotSize - inset * 2);
   const path = points.length === 1
-    ? `${pad},${yAt(points[0].dollars).toFixed(2)} ${width - pad},${yAt(points[0].dollars).toFixed(2)}`
-    : points.map((point, index) => {
-      const x = pad + (index / (points.length - 1)) * (width - pad * 2);
-      return `${x.toFixed(2)},${yAt(point.dollars).toFixed(2)}`;
-    }).join(" ");
-  const zero = yAt(0).toFixed(2);
-  return { path, zero: `0,${zero} ${width},${zero}` };
+    ? `${(plotX + inset).toFixed(2)},${yAt(points[0].dollars).toFixed(2)} ${(plotX + plotSize - inset).toFixed(2)},${yAt(points[0].dollars).toFixed(2)}`
+    : points.map((point, index) => `${xAt(index).toFixed(2)},${yAt(point.dollars).toFixed(2)}`).join(" ");
+  const yTicks: SquareLine["yTicks"] = [];
+  const steps = Math.round((bounds.max - bounds.min) / bounds.step);
+  for (let i = 0; i <= steps && i < 8; i += 1) {
+    const value = Math.round((bounds.min + i * bounds.step) * 100) / 100;
+    yTicks.push({ y: yAt(value), label: formatDollars(value), zero: value === 0 });
+  }
+  const indexes: number[] = [];
+  if (points.length <= 6) {
+    points.forEach((_, index) => indexes.push(index));
+  } else {
+    const marks = new Set<number>([0, points.length - 1]);
+    for (let i = 1; i <= 4; i += 1) marks.add(Math.round((i * (points.length - 1)) / 5));
+    indexes.push(...[...marks].sort((a, b) => a - b));
+  }
+  const xLabels: SquareLine["xLabels"] = [];
+  for (const index of indexes) {
+    const label = formatSlateDay(points[index].slateDate);
+    const x = xAt(index);
+    const previous = xLabels[xLabels.length - 1];
+    if (previous && previous.label === label) {
+      previous.x = (previous.x + x) / 2;
+      continue;
+    }
+    xLabels.push({ x, label });
+  }
+  const dots = points.map((point, index) => {
+    const x = xAt(index);
+    const y = yAt(point.dollars);
+    const anchor: "start" | "middle" | "end" = x < plotX + 52 ? "start" : x > plotX + plotSize - 52 ? "end" : "middle";
+    const labelY = y < plotY + 28 ? y + 16 : y - 12;
+    return { x, y, value: points.length <= 8 ? formatDollars(point.dollars) : "", anchor, labelY };
+  });
+  return { plotX, plotY, plotSize, path, dots, yTicks, xLabels };
 }
 
 function CumulativeDollars({ points }: { points: readonly CumulativeDollar[] }) {
-  const line = cumulativeLine(points);
+  const line = cumulativeSquare(points);
   const end = points.length > 0 ? points[points.length - 1].dollars : null;
   const direction = end == null ? "" : end > 0 ? "units-up" : end < 0 ? "units-down" : "";
+  const axisY = line ? line.plotY + line.plotSize / 2 : 0;
   return (
     <section className="card cumulative-dollars" aria-label="Cumulative dollars, all settled bets">
-      <h2>Cumulative dollars, all settled bets</h2>
+      <div className="cumulative-head">
+        <h2>Cumulative dollars, all settled bets</h2>
+        <strong className={direction}>{end == null ? "—" : formatDollars(end)}</strong>
+      </div>
       {line ? (
-        <svg className="cumulative-spark" viewBox="0 0 320 36" preserveAspectRatio="none" aria-hidden="true">
-          <polyline className="zero" points={line.zero} />
+        <svg className="cumulative-square" viewBox="0 0 400 400" role="img" aria-label="Cumulative dollars, all settled bets">
+          <text className="axis" x={16} y={axisY} textAnchor="middle" transform={`rotate(-90 16 ${axisY})`}>Dollars</text>
+          <rect className="frame" x={line.plotX} y={line.plotY} width={line.plotSize} height={line.plotSize} />
+          {line.yTicks.map((tick) => (
+            <g key={`y-${tick.label}`}>
+              <line className={tick.zero ? "zero" : "grid"} x1={line.plotX} x2={line.plotX + line.plotSize} y1={tick.y} y2={tick.y} />
+              <text className="tick" x={line.plotX - 8} y={tick.y} textAnchor="end" dominantBaseline="middle">{tick.label}</text>
+            </g>
+          ))}
           <polyline className="path" points={line.path} />
+          {line.dots.map((dot, index) => (
+            <g key={`dot-${index}`}>
+              <circle className="dot" cx={dot.x} cy={dot.y} r={4} />
+              {dot.value ? <text className="value" x={dot.x} y={dot.labelY} textAnchor={dot.anchor}>{dot.value}</text> : null}
+            </g>
+          ))}
+          {line.xLabels.map((label) => (
+            <text className="tick" key={`x-${label.label}-${label.x}`} x={label.x} y={line.plotY + line.plotSize + 20} textAnchor="middle">{label.label}</text>
+          ))}
+          <text className="axis" x={line.plotX + line.plotSize / 2} y={line.plotY + line.plotSize + 42} textAnchor="middle">Date</text>
         </svg>
       ) : null}
-      <strong className={direction}>{end == null ? "—" : formatDollars(end)}</strong>
     </section>
   );
 }
