@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { emptyDatabase, type Actual, type Game, type Player } from "../lib/engine";
-import { homeworkRows, lastFifteenMpgLabel, priorGames, type HomeworkCandidate, type HomeworkLog, type HomeworkStat } from "../lib/homework";
+import { homeworkRows, lastFifteenMpgLabel, lastFifteenPpgLabel, priorGames, type HomeworkCandidate, type HomeworkLog, type HomeworkStat } from "../lib/homework";
 import type { LineupTeam } from "../lib/sources/rotowire-lineups";
 
 const DATE = "2026-11-14";
@@ -345,6 +345,26 @@ test("lineup mpg is the mean of the last 15 stored minutes, rounded .5 up", () =
   const mixed = [minutesLog("2026-11-01", null), minutesLog("2026-11-02", 31)];
   assert.equal(lastFifteenMpgLabel(mixed, "Tyrese Maxey", "PHI"), "31 mpg");
   assert.equal(lastFifteenMpgLabel([minutesLog("2026-11-01", null)], "Tyrese Maxey", "PHI"), null);
+});
+
+test("lineup ppg is the mean of the last 15 stored points, rounded .5 up", () => {
+  const pointsLog = (date: string, points: number | null, playerId = "furphjo01", playerName = "Johnny Furphy") =>
+    log(playerId, playerName, date, points, 2, { minutes: 8, teamId: "IND", position: "G", gameId: `${date}|IND@BOS` });
+
+  const older = pointsLog("2026-10-01", 99);
+  const last15 = Array.from({ length: 15 }, (_, index) => pointsLog(`2026-10-${String(index + 2).padStart(2, "0")}`, 4));
+  assert.equal(lastFifteenPpgLabel([older, ...last15], "Johnny Furphy", "IND"), "4 ppg");
+
+  const halfUp = Array.from({ length: 15 }, (_, index) => pointsLog(`2026-11-${String(index + 1).padStart(2, "0")}`, 4.5));
+  assert.equal(lastFifteenPpgLabel(halfUp, "Johnny Furphy", "IND"), "5 ppg");
+
+  const few = [pointsLog("2026-11-01", 2), pointsLog("2026-11-02", 6)];
+  assert.equal(lastFifteenPpgLabel(few, "Johnny Furphy", "IND"), "4 ppg");
+  assert.equal(lastFifteenPpgLabel(few, "Tyrese Maxey", "IND"), null);
+
+  const mixed = [pointsLog("2026-11-01", null), pointsLog("2026-11-02", 4)];
+  assert.equal(lastFifteenPpgLabel(mixed, "Johnny Furphy", "IND"), "4 ppg");
+  assert.equal(lastFifteenPpgLabel([pointsLog("2026-11-01", null)], "Johnny Furphy", "IND"), null);
 });
 
 test("prior games are stored results from before the slate, without invented minutes", () => {

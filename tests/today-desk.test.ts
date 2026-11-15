@@ -53,7 +53,9 @@ test("homework sits above the player list and is not a table", () => {
   assert.match(panel, /\$\{player\.name\} · \$\{player\.position\} · \$\{role\}/);
   assert.match(panel, /player\.position \?/);
   assert.match(panel, /lastFifteenMpgLabel\(logs, player\.name, teamId\)/);
+  assert.match(panel, /lastFifteenPpgLabel\(logs, player\.name, teamId\)/);
   assert.match(panel, /mpg \? ` · \$\{mpg\}` : null/);
+  assert.match(panel, /ppg \? ` · \$\{ppg\}` : null/);
   assert.match(today, /logs=\{slate\?\.priorGames \?\? \[\]\}/);
   assert.match(panel, /className="lineup-injury"/);
   assert.doesNotMatch(panel, /className="homework-role"/);

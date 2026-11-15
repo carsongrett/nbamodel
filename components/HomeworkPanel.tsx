@@ -3,7 +3,7 @@
 import { useState, type CSSProperties, type KeyboardEvent } from "react";
 import { formatStake } from "../lib/bets";
 import type { SlateStat } from "../lib/engine";
-import { lastFifteenMpgLabel, type HomeworkLog, type HomeworkRow } from "../lib/homework";
+import { lastFifteenMpgLabel, lastFifteenPpgLabel, type HomeworkLog, type HomeworkRow } from "../lib/homework";
 import { lineupPlayer, type LineupPlayer, type LineupTeam } from "../lib/sources/rotowire-lineups";
 import { canonicalTeam } from "../lib/sources/teams";
 import Trace from "./Trace";
@@ -208,11 +208,13 @@ export function LineupBreakout({
               <ul className="homework-lineup-list">
                 {[...starters, ...bench].map((player) => {
                   const mpg = lastFifteenMpgLabel(logs, player.name, teamId);
+                  const ppg = lastFifteenPpgLabel(logs, player.name, teamId);
                   return (
                     <li key={`${teamId}|${player.role}|${player.name}`}>
                       {lineupName(player, roleLabel(team, player))}
                       {player.injury ? <> · <span className="lineup-injury">{player.injury}</span></> : null}
                       {mpg ? ` · ${mpg}` : null}
+                      {ppg ? ` · ${ppg}` : null}
                     </li>
                   );
                 })}

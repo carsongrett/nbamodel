@@ -111,17 +111,32 @@ function matchLogPlayerId(logs: readonly HomeworkLog[], playerName: string, team
   return ids.length === 1 ? ids[0] : null;
 }
 
-/** Mean of the last 15 stored games that have minutes. Fewer than 15 uses what exists. */
-export function lastFifteenMpgLabel(logs: readonly HomeworkLog[], playerName: string, teamId = ""): string | null {
+function lastFifteenMean(
+  logs: readonly HomeworkLog[],
+  playerName: string,
+  teamId: string,
+  value: (log: HomeworkLog) => number | null,
+): number | null {
   const playerId = matchLogPlayerId(logs, playerName, teamId);
   if (!playerId) return null;
   const recent = logs
-    .filter((log) => log.playerId === playerId && finite(log.minutes))
+    .filter((log) => log.playerId === playerId && finite(value(log)))
     .sort((a, b) => a.date.localeCompare(b.date) || a.gameId.localeCompare(b.gameId))
     .slice(-15);
   if (recent.length === 0) return null;
-  const mean = recent.reduce((sum, log) => sum + (log.minutes as number), 0) / recent.length;
-  return `${minuteText(mean)} mpg`;
+  return recent.reduce((sum, log) => sum + (value(log) as number), 0) / recent.length;
+}
+
+/** Mean of the last 15 stored games that have minutes. Fewer than 15 uses what exists. */
+export function lastFifteenMpgLabel(logs: readonly HomeworkLog[], playerName: string, teamId = ""): string | null {
+  const mean = lastFifteenMean(logs, playerName, teamId, (log) => log.minutes);
+  return mean == null ? null : `${minuteText(mean)} mpg`;
+}
+
+/** Mean of the last 15 stored games that have points. Fewer than 15 uses what exists. */
+export function lastFifteenPpgLabel(logs: readonly HomeworkLog[], playerName: string, teamId = ""): string | null {
+  const mean = lastFifteenMean(logs, playerName, teamId, (log) => log.points);
+  return mean == null ? null : `${minuteText(mean)} ppg`;
 }
 
 function splitRole(note: string | null): { role: string | null; injury: string | null } {
