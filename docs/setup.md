@@ -58,6 +58,8 @@ The app also refuses those pregame writes before they reach the database.
 
 Bet units need `supabase/migrations/20261105180000_bet_units.sql` in that same SQL editor. Until it runs, Supabase does not keep a bet. A local file store does not need that script.
 
+The Projections and Lines finish times need `supabase/migrations/20261115221500_run_finished.sql` in that same editor. Until it runs, Supabase does not keep those two times. A local file store does not need that script.
+
 ## Imports
 
 Templates live in `templates/csv` and `templates/json`. The sample bundle is `data/sample/bundle.json`. Adapters are `csv` and `json`. JSON is an array of objects or `{ "rows": [ ... ] }`.

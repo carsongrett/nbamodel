@@ -1,3 +1,17 @@
+/** ISO time, or null when the value is not a real instant. */
+export function isoInstant(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  const when = value instanceof Date ? value : typeof value === "string" ? new Date(value) : null;
+  if (!when || Number.isNaN(when.getTime())) return null;
+  return when.toISOString();
+}
+
+/** A real instant, or null. Today uses this for the saved Projections and Lines times. */
+export function clockInstant(value: unknown): Date | null {
+  const iso = isoInstant(value);
+  return iso ? new Date(iso) : null;
+}
+
 /** Clock time in America/Chicago, for example "9:48 PM". Empty when the instant is not a real time. */
 export function centralTime(when: Date): string {
   if (Number.isNaN(when.getTime())) return "";
