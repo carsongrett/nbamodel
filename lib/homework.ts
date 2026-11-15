@@ -1,5 +1,5 @@
 import { canonicalizeDatabase, type Database, type SlateRow } from "./engine";
-import { noteForPlayer, type LineupTeam } from "./sources/rotowire-lineups";
+import { lineupPlayer, noteForPlayer, type LineupTeam } from "./sources/rotowire-lineups";
 
 export type HomeworkStat = "points" | "rebounds";
 
@@ -122,6 +122,12 @@ function lastFive(logs: readonly HomeworkLog[], playerId: string, date: string, 
   return `${minutes}${label} ${values}`;
 }
 
+/** Rotowire label Out, and only after this visit's lineup check. A null check leaves the row. */
+function markedOut(lineups: readonly LineupTeam[] | null, teamId: string, playerName: string): boolean {
+  if (!lineups) return false;
+  return lineupPlayer([...lineups], teamId, playerName)?.player.injury === "Out";
+}
+
 function storyNote(
   stories: readonly { playerId: string; gameId: string; stat: HomeworkStat; text: string }[] | undefined,
   row: HomeworkCandidate,
@@ -163,6 +169,7 @@ export function homeworkRows(input: {
     if (teamId && row.teamId !== teamId) continue;
     if (row.stat !== "points" && row.stat !== "rebounds") continue;
     if (row.blocked) continue;
+    if (markedOut(input.lineups, row.teamId, row.playerName)) continue;
     if (!finite(row.edge) || !finite(row.projection) || !finite(row.line)) continue;
     ranked.push({ gap: Math.abs(row.edge), row });
   }
