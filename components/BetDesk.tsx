@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatDollars, formatRecord, formatSlateDay, formatStake, formatUnits, resultUnits, type BetTracking, type BetWindows, type CumulativeDollar } from "../lib/bets";
+import { formatDollars, formatRecord, formatSlateDay, formatStake, formatUnits, resultUnits, type BetTracking, type BetWindows, type CumulativeDollar, type PendingBetRow } from "../lib/bets";
 import AboutDesk from "./AboutDesk";
 import DeskNav from "./DeskNav";
 
@@ -15,6 +15,19 @@ const WINDOWS: { key: keyof BetWindows; label: string }[] = [
 function blankNum(value: number | null, digits = 2): string {
   if (value == null || Number.isNaN(value)) return "";
   return value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+function pendingStat(stat: PendingBetRow["stat"]): string {
+  if (stat === "points") return "Points";
+  if (stat === "rebounds") return "Rebounds";
+  if (stat === "points_rebounds") return "Points + rebounds";
+  return "";
+}
+
+function pendingSide(side: PendingBetRow["side"]): string {
+  if (side === "over") return "Over";
+  if (side === "under") return "Under";
+  return "";
 }
 
 function isWindow(value: BetTracking["dollars"] | undefined): value is BetTracking["dollars"] {
@@ -255,13 +268,21 @@ export default function BetDesk({ authConfigured }: { authConfigured: boolean })
               <thead>
                 <tr>
                   <th>Player</th>
+                  <th>Stat</th>
+                  <th>Over/Under</th>
+                  <th className="num">Line</th>
+                  <th className="num">Projection</th>
                   <th className="num">Units</th>
                 </tr>
               </thead>
               <tbody>
                 {totals.pending.map((bet, index) => (
-                  <tr key={`${bet.playerName}|${bet.units}|${index}`}>
+                  <tr key={`${bet.playerName}|${bet.stat ?? ""}|${bet.units}|${index}`}>
                     <td>{bet.playerName}</td>
+                    <td>{pendingStat(bet.stat)}</td>
+                    <td>{pendingSide(bet.side)}</td>
+                    <td className="num">{blankNum(bet.line, 1)}</td>
+                    <td className="num">{blankNum(bet.projection)}</td>
                     <td className="num">{formatStake(bet.units)}</td>
                   </tr>
                 ))}
