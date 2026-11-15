@@ -45,6 +45,9 @@ test("homework sits above the player list and is not a table", () => {
   assert.match(panel, /className="lineup-injury"/);
   assert.doesNotMatch(panel, /className="homework-role"/);
   assert.match(panel, /className="homework-last"/);
+  assert.match(panel, /row\.last5\.split\(" · "\)/);
+  assert.match(css, /\.homework-last \{ display: grid; \}/);
+  assert.match(css, /\.homework-last > span \{ display: block; \}/);
   assert.match(panel, /className="homework-note"/);
   assert.ok(panel.indexOf("homework-last") < panel.indexOf("homework-note"));
   assert.doesNotMatch(panel, /<table/);

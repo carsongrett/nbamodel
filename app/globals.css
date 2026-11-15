@@ -305,6 +305,8 @@ details.step-line > summary::marker { content: ""; }
   font-variant-numeric: tabular-nums;
 }
 .homework-market, .homework-last, .homework-note { margin: 6px 0 0; font-size: 13px; line-height: 1.4; }
+.homework-last { display: grid; }
+.homework-last > span { display: block; }
 .homework-market, .homework-note { color: var(--muted); }
 .homework-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 8px; }
 .homework-units { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
