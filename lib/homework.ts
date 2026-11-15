@@ -16,6 +16,8 @@ export type HomeworkCandidate = {
   /** Board delta. Ranking and the headline use this number, not a second formula. */
   edge: number | null;
   minutesUsed: number | null;
+  /** The board already blocked this stat. Ranking leaves that row out. */
+  blocked?: boolean;
 };
 
 /** One stored game before the slate. Minutes stay empty when the store has none. */
@@ -141,6 +143,7 @@ export function candidatesFromSlate(rows: readonly SlateRow[]): HomeworkCandidat
     line: row.stats[stat].line,
     edge: row.stats[stat].edge,
     minutesUsed: row.minutesUsed,
+    blocked: Boolean(row.stats[stat].blockReason),
   })));
 }
 
@@ -159,6 +162,7 @@ export function homeworkRows(input: {
   for (const row of input.rows) {
     if (teamId && row.teamId !== teamId) continue;
     if (row.stat !== "points" && row.stat !== "rebounds") continue;
+    if (row.blocked) continue;
     if (!finite(row.edge) || !finite(row.projection) || !finite(row.line)) continue;
     ranked.push({ gap: Math.abs(row.edge), row });
   }

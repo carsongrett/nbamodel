@@ -28,6 +28,7 @@ function candidate(
     line,
     edge: extra.edge === undefined ? edge : extra.edge,
     minutesUsed: extra.minutesUsed ?? null,
+    blocked: extra.blocked === true,
   };
 }
 
@@ -80,6 +81,17 @@ test("homework keeps the eight largest points and rebounds gaps", () => {
   assert.equal(all.find((row) => row.playerName === "Below big")?.delta, -12);
   assert.equal(all.find((row) => row.playerName === "Above big")?.delta, 15);
   assert.equal(all.some((row) => row.playerName === "Cut off"), false);
+  const blocked = homeworkRows({
+    date: DATE,
+    rows: [
+      candidate("Open", "points", 20, 10),
+      candidate("Blocked", "points", 40, 10, { blocked: true }),
+      candidate("Blocked", "rebounds", 12, 8),
+    ],
+    logs: [],
+    lineups: null,
+  });
+  assert.deepEqual(blocked.map((row) => `${row.playerName} ${row.statLabel}`), ["Open Points", "Blocked Rebounds"]);
 
   const dallas = homeworkRows({ date: DATE, teamId: "DAL", rows, logs: [], lineups: null });
   assert.equal(dallas.some((row) => row.teamId !== "DAL"), false);
