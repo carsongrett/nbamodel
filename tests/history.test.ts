@@ -306,44 +306,71 @@ test("vegas abs error averages |line - actual| on the saved rows in the model er
   assert.equal(summary.vegasMeanAbsoluteError, vegas.reduce((sum, error) => sum + error, 0) / vegas.length);
 });
 
-test("win-loss windows end on the slate date and the cumulative rate is one line", () => {
+test("distance windows repeat the four thresholds for last 7, last 30, and all time", () => {
   const end = "2026-11-14";
-  const row = (date: string, grade: "win" | "loss" | "push", stat: Stat = "points") => ({
+  const row = (
+    date: string,
+    grade: "win" | "loss" | "push",
+    projection: number,
+    line: number,
+    stat: Stat = "points",
+  ) => ({
     date,
     stat,
     source: "saved" as const,
     grade,
-    projection: 20,
-    line: 18,
+    projection,
+    line,
     actual: 10,
     error: 1,
   });
   const rows = [
-    row(day(end, -30), "loss"),
-    row(day(end, -29), "win"),
-    row(day(end, -7), "loss"),
-    row(day(end, -6), "win"),
-    row(day(end, -1), "push"),
-    row(end, "win"),
-    row(day(end, 1), "win"),
-    row(end, "win", "rebounds"),
+    row(day(end, -30), "win", 24, 20),
+    row(day(end, -29), "loss", 19, 18),
+    row(day(end, -7), "win", 23, 20),
+    row(day(end, -6), "loss", 22.5, 20),
+    row(day(end, -1), "push", 30, 20),
+    row(end, "win", 24, 20),
+    row(day(end, 1), "win", 22, 20),
+    row(end, "win", 24, 20, "rebounds"),
   ];
+  const pack = (groups: { threshold: number; wins: number; losses: number; hitRate: number | null }[]) =>
+    groups.map((group) => [group.threshold, group.wins, group.losses, group.hitRate]);
   const windows = historyErrorWindows(rows, "points", end);
-  assert.deepEqual(windows.records.last7, { wins: 2, losses: 0, winRate: 1 });
-  assert.deepEqual(windows.records.last30, { wins: 3, losses: 1, winRate: 0.75 });
-  assert.deepEqual(windows.records.allTime, { wins: 4, losses: 2, winRate: 4 / 6 });
-  assert.deepEqual(windows.cumulativeWinRate.map((point) => point.rate), [0, 0.5, 1 / 3, 0.5, 0.6, 4 / 6]);
+  assert.deepEqual(pack(windows.distance.last7), [
+    [1, 1, 1, 0.5],
+    [2, 1, 1, 0.5],
+    [3, 1, 0, 1],
+    [4, 1, 0, 1],
+  ]);
+  assert.deepEqual(pack(windows.distance.last30), [
+    [1, 2, 2, 0.5],
+    [2, 2, 1, 2 / 3],
+    [3, 2, 0, 1],
+    [4, 1, 0, 1],
+  ]);
+  assert.deepEqual(pack(windows.distance.allTime), [
+    [1, 4, 2, 4 / 6],
+    [2, 4, 1, 4 / 5],
+    [3, 3, 0, 1],
+    [4, 2, 0, 1],
+  ]);
   const rebounds = historyErrorWindows(rows, "rebounds", end);
-  assert.deepEqual(rebounds.records.allTime, { wins: 1, losses: 0, winRate: 1 });
-  assert.deepEqual(rebounds.cumulativeWinRate.map((point) => point.rate), [1]);
+  assert.deepEqual(pack(rebounds.distance.last7), [
+    [1, 1, 0, 1],
+    [2, 1, 0, 1],
+    [3, 1, 0, 1],
+    [4, 1, 0, 1],
+  ]);
   const source = readFileSync(new URL("../components/HistoryDesk.tsx", import.meta.url), "utf8");
   assert.match(source, /<h2>Distance from the line<\/h2>/);
-  assert.match(source, /label: "Last 7 days"/);
-  assert.match(source, /label: "Last 30 days"/);
-  assert.match(source, /Cumulative win rate, all time, \{statLabel\}/);
-  const plot = source.slice(source.indexOf("Cumulative win rate, all time"), source.indexOf('aria-label="Bet players"'));
-  assert.equal(plot.split("<polyline").length - 1, 1);
-  assert.doesNotMatch(plot, /Last 7 days|Last 30 days/);
+  assert.match(source, /period="This slate" groups=\{view\.distance\}/);
+  assert.match(source, /period="Last 7 days"/);
+  assert.match(source, /period="Last 30 days"/);
+  assert.match(source, /period="All time"/);
+  assert.match(source, /At least 1 point/);
+  assert.doesNotMatch(source, /Cumulative win rate/);
+  assert.doesNotMatch(source, /polyline/);
 });
 
 test("History labels slate, last 15 days, and all time abs error for the model and Vegas", () => {

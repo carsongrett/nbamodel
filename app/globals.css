@@ -91,12 +91,9 @@ details.bet-list > .table-wrap { margin-top: 0; }
 .line-distance-row span { color: var(--muted); font-size: 12px; }
 .line-distance-row span:first-child { grid-column: 1 / -1; }
 .line-distance-row strong { font-variant-numeric: tabular-nums; font-size: 16px; }
-
-.cumulative-rate { margin: 0 0 14px; }
-.cumulative-rate h2 { margin: 0 0 4px; font-size: 16px; }
-.cumulative-rate .meta { margin: 0 0 8px; }
-.cumulative-rate-line { display: block; width: min(100%, 440px); height: 72px; }
-.cumulative-rate-line .path { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.line-distance-set { margin: 0 0 10px; }
+.line-distance-set h3 { margin: 0 0 6px; font-size: 13px; }
+.line-distance-set:last-child { margin-bottom: 0; }
 
 .board-note { margin: 0 0 8px; }
 .bet-players { margin: 0 0 14px; }

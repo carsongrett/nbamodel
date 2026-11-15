@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { SlateView, Stat } from "../lib/engine";
 import {
   HISTORY_RESULT_OPTIONS,
+  LINE_DISTANCE_THRESHOLDS,
   applyHistoryFilters,
   groupHistoryByGame,
   historyResultFilter,
@@ -11,6 +12,7 @@ import {
   historySummary,
   type HistoryErrorWindows,
   type HistoryResultFilter,
+  type LineDistanceGroup,
 } from "../lib/history";
 import { betDollars, betPlayers, formatDollars, formatStake } from "../lib/bets";
 import AboutDesk from "./AboutDesk";
@@ -58,22 +60,6 @@ function pct(value: number | null): string {
   return `${(value * 100).toFixed(0)}%`;
 }
 
-function cumulativeRatePath(points: readonly { rate: number }[]): string | null {
-  if (points.length === 0) return null;
-  const width = 320;
-  const height = 72;
-  const pad = 4;
-  const yAt = (rate: number) => pad + (1 - rate) * (height - pad * 2);
-  if (points.length === 1) {
-    const y = yAt(points[0].rate).toFixed(2);
-    return `${pad},${y} ${width - pad},${y}`;
-  }
-  return points.map((point, index) => {
-    const x = pad + (index / (points.length - 1)) * (width - pad * 2);
-    return `${x.toFixed(2)},${yAt(point.rate).toFixed(2)}`;
-  }).join(" ");
-}
-
 function savedWhen(iso: string | null): string {
   if (!iso) return "Not saved";
   const date = new Date(iso);
@@ -90,6 +76,35 @@ function savedWhen(iso: string | null): string {
 
 function pointsLabel(threshold: number): string {
   return threshold === 1 ? "At least 1 point" : `At least ${threshold} points`;
+}
+
+function DistanceSet({ period, groups }: { period: string; groups: readonly LineDistanceGroup[] | undefined }) {
+  const boxes = groups ?? LINE_DISTANCE_THRESHOLDS.map((threshold) => ({
+    threshold,
+    wins: null as number | null,
+    losses: null as number | null,
+    hitRate: null as number | null,
+  }));
+  return (
+    <div className="line-distance-set">
+      <h3>{period}</h3>
+      <div className="line-distance-row">
+        {boxes.map((group) => {
+          const loaded = group.wins != null && group.losses != null;
+          const mark = loaded ? `${group.wins}-${group.losses}` : "—";
+          const rate = loaded ? pct(group.hitRate) : "—";
+          const detail = loaded ? `${group.wins} wins, ${group.losses} losses, hit rate ${rate}` : "not loaded";
+          return (
+            <div key={group.threshold} role="group" aria-label={`${period}, ${pointsLabel(group.threshold)}: ${detail}`}>
+              <span>{pointsLabel(group.threshold)}</span>
+              <strong>{mark}</strong>
+              <span>{rate}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function HistoryDesk({ today, authConfigured }: { today: string; authConfigured: boolean }) {
@@ -189,14 +204,7 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
   const shownWindows = windowsDate === date ? windows : null;
   const last15 = shownWindows?.[stat]?.last15;
   const allTimeErrors = shownWindows?.[stat]?.allTime;
-  const records = shownWindows?.[stat]?.records;
-  const cumulativePath = cumulativeRatePath(shownWindows?.[stat]?.cumulativeWinRate ?? []);
-  const statLabel = STATS.find((item) => item.id === stat)?.label ?? "Points";
-  const recordBoxes = [
-    { label: "Last 7 days", record: records?.last7 },
-    { label: "Last 30 days", record: records?.last30 },
-    { label: "All time", record: records?.allTime },
-  ];
+  const distanceWindows = shownWindows?.[stat]?.distance;
   const gameOptions = useMemo(() => {
     const savedIds = new Set(
       (slate?.rows ?? [])
@@ -310,48 +318,11 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
           {slate ? (
             <section className="line-distance" aria-label="Hit rate by distance from the line">
               <h2>Distance from the line</h2>
-              <p className="meta">Wins and losses in this filter. Distance is how far the projection sits from the line, above or below.</p>
-              <div className="line-distance-row">
-                {view.distance.map((group) => (
-                  <div key={group.threshold} role="group" aria-label={`${pointsLabel(group.threshold)}: ${group.wins} wins, ${group.losses} losses, hit rate ${pct(group.hitRate)}`}>
-                    <span>{pointsLabel(group.threshold)}</span>
-                    <strong>{group.wins}-{group.losses}</strong>
-                    <span>{pct(group.hitRate)}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
-
-          {slate ? (
-            <section className="line-distance" aria-label="Win-loss record">
-              <h2>Win-loss record</h2>
-              <p className="meta">Wins and losses for {statLabel}. Last 7 days and last 30 days end on this slate and include it. Pushes stay out.</p>
-              <div className="line-distance-row">
-                {recordBoxes.map((box) => {
-                  const mark = box.record ? `${box.record.wins}-${box.record.losses}` : "—";
-                  const rate = box.record ? pct(box.record.winRate) : "—";
-                  const detail = box.record ? `${box.record.wins} wins, ${box.record.losses} losses, hit rate ${rate}` : "not loaded";
-                  return (
-                    <div key={box.label} role="group" aria-label={`${box.label}: ${detail}`}>
-                      <span>{box.label}</span>
-                      <strong>{mark}</strong>
-                      <span>{rate}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
-          {slate ? (
-            <section className="card cumulative-rate" aria-label={`Cumulative win rate, all time, ${statLabel}`}>
-              <h2>Cumulative win rate, all time, {statLabel}</h2>
-              <p className="meta">Running win rate for every settled win and loss in this stat, oldest first.</p>
-              {cumulativePath ? (
-                <svg className="cumulative-rate-line" viewBox="0 0 320 72" role="img">
-                  <polyline className="path" points={cumulativePath} />
-                </svg>
-              ) : <p className="meta">—</p>}
+              <p className="meta">Wins and losses in this filter. Distance is how far the projection sits from the line, above or below. Last 7 days, last 30 days, and all time use the selected stat. Last 7 days and last 30 days end on this slate and include it. Pushes stay out.</p>
+              <DistanceSet period="This slate" groups={view.distance} />
+              <DistanceSet period="Last 7 days" groups={distanceWindows?.last7} />
+              <DistanceSet period="Last 30 days" groups={distanceWindows?.last30} />
+              <DistanceSet period="All time" groups={distanceWindows?.allTime} />
             </section>
           ) : null}
 
