@@ -185,9 +185,27 @@ export type HistoryAbsError = {
   vegasMeanAbsoluteError: number | null;
 };
 
+export type HistoryRecord = {
+  wins: number;
+  losses: number;
+  winRate: number | null;
+};
+
+export type HistoryRecordWindows = {
+  last7: HistoryRecord;
+  last30: HistoryRecord;
+  allTime: HistoryRecord;
+};
+
+export type CumulativeWinRate = {
+  rate: number;
+};
+
 export type HistoryErrorWindows = {
   last15: HistoryAbsError;
   allTime: HistoryAbsError;
+  records: HistoryRecordWindows;
+  cumulativeWinRate: CumulativeWinRate[];
 };
 
 export type HistoryErrorRow = {
@@ -216,6 +234,47 @@ function absError(cells: readonly SummaryCell[]): HistoryAbsError {
   };
 }
 
+function recordOf(rows: readonly HistoryErrorRow[]): HistoryRecord {
+  let wins = 0;
+  let losses = 0;
+  for (const row of rows) {
+    if (row.grade === "win") wins += 1;
+    else if (row.grade === "loss") losses += 1;
+  }
+  const decided = wins + losses;
+  return { wins, losses, winRate: decided === 0 ? null : wins / decided };
+}
+
+function windowRows(rows: readonly HistoryErrorRow[], endDate: string, daysBack: number): HistoryErrorRow[] {
+  const start = shiftIsoDate(endDate, -(daysBack - 1));
+  return rows.filter((row) => row.date >= start && row.date <= endDate);
+}
+
+/** Last 7 and last 30 end on endDate and include it. All time uses every date. Pushes stay out. */
+export function historyRecordWindows(rows: readonly HistoryErrorRow[], stat: Stat, endDate: string): HistoryRecordWindows {
+  const matching = rows.filter((row) => row.stat === stat);
+  return {
+    last7: recordOf(windowRows(matching, endDate, 7)),
+    last30: recordOf(windowRows(matching, endDate, 30)),
+    allTime: recordOf(matching),
+  };
+}
+
+/** Running win rate for settled wins and losses in this stat, oldest date first. Pushes stay out. */
+export function cumulativeWinRate(rows: readonly HistoryErrorRow[], stat: Stat): CumulativeWinRate[] {
+  const settled = rows
+    .filter((row) => row.stat === stat && (row.grade === "win" || row.grade === "loss"))
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date));
+  let wins = 0;
+  let losses = 0;
+  return settled.map((row) => {
+    if (row.grade === "win") wins += 1;
+    else losses += 1;
+    return { rate: wins / (wins + losses) };
+  });
+}
+
 /**
  * Last 15 days ends on endDate and includes that date. All time uses every date.
  * The stat is the History stat filter. Both windows use historySummary, so a row
@@ -228,6 +287,8 @@ export function historyErrorWindows(rows: readonly HistoryErrorRow[], stat: Stat
   return {
     last15: absError(last15),
     allTime: absError(matching),
+    records: historyRecordWindows(rows, stat, endDate),
+    cumulativeWinRate: cumulativeWinRate(rows, stat),
   };
 }
 

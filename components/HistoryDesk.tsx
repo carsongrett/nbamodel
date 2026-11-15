@@ -58,6 +58,22 @@ function pct(value: number | null): string {
   return `${(value * 100).toFixed(0)}%`;
 }
 
+function cumulativeRatePath(points: readonly { rate: number }[]): string | null {
+  if (points.length === 0) return null;
+  const width = 320;
+  const height = 72;
+  const pad = 4;
+  const yAt = (rate: number) => pad + (1 - rate) * (height - pad * 2);
+  if (points.length === 1) {
+    const y = yAt(points[0].rate).toFixed(2);
+    return `${pad},${y} ${width - pad},${y}`;
+  }
+  return points.map((point, index) => {
+    const x = pad + (index / (points.length - 1)) * (width - pad * 2);
+    return `${x.toFixed(2)},${yAt(point.rate).toFixed(2)}`;
+  }).join(" ");
+}
+
 function savedWhen(iso: string | null): string {
   if (!iso) return "Not saved";
   const date = new Date(iso);
@@ -173,6 +189,14 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
   const shownWindows = windowsDate === date ? windows : null;
   const last15 = shownWindows?.[stat]?.last15;
   const allTimeErrors = shownWindows?.[stat]?.allTime;
+  const records = shownWindows?.[stat]?.records;
+  const cumulativePath = cumulativeRatePath(shownWindows?.[stat]?.cumulativeWinRate ?? []);
+  const statLabel = STATS.find((item) => item.id === stat)?.label ?? "Points";
+  const recordBoxes = [
+    { label: "Last 7 days", record: records?.last7 },
+    { label: "Last 30 days", record: records?.last30 },
+    { label: "All time", record: records?.allTime },
+  ];
   const gameOptions = useMemo(() => {
     const savedIds = new Set(
       (slate?.rows ?? [])
@@ -296,6 +320,38 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                   </div>
                 ))}
               </div>
+            </section>
+          ) : null}
+
+          {slate ? (
+            <section className="line-distance" aria-label="Win-loss record">
+              <h2>Win-loss record</h2>
+              <p className="meta">Wins and losses for {statLabel}. Last 7 days and last 30 days end on this slate and include it. Pushes stay out.</p>
+              <div className="line-distance-row">
+                {recordBoxes.map((box) => {
+                  const mark = box.record ? `${box.record.wins}-${box.record.losses}` : "—";
+                  const rate = box.record ? pct(box.record.winRate) : "—";
+                  const detail = box.record ? `${box.record.wins} wins, ${box.record.losses} losses, hit rate ${rate}` : "not loaded";
+                  return (
+                    <div key={box.label} role="group" aria-label={`${box.label}: ${detail}`}>
+                      <span>{box.label}</span>
+                      <strong>{mark}</strong>
+                      <span>{rate}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+          {slate ? (
+            <section className="card cumulative-rate" aria-label={`Cumulative win rate, all time, ${statLabel}`}>
+              <h2>Cumulative win rate, all time, {statLabel}</h2>
+              <p className="meta">Running win rate for every settled win and loss in this stat, oldest first.</p>
+              {cumulativePath ? (
+                <svg className="cumulative-rate-line" viewBox="0 0 320 72" role="img">
+                  <polyline className="path" points={cumulativePath} />
+                </svg>
+              ) : <p className="meta">—</p>}
             </section>
           ) : null}
 

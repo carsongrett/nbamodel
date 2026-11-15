@@ -306,6 +306,46 @@ test("vegas abs error averages |line - actual| on the saved rows in the model er
   assert.equal(summary.vegasMeanAbsoluteError, vegas.reduce((sum, error) => sum + error, 0) / vegas.length);
 });
 
+test("win-loss windows end on the slate date and the cumulative rate is one line", () => {
+  const end = "2026-11-14";
+  const row = (date: string, grade: "win" | "loss" | "push", stat: Stat = "points") => ({
+    date,
+    stat,
+    source: "saved" as const,
+    grade,
+    projection: 20,
+    line: 18,
+    actual: 10,
+    error: 1,
+  });
+  const rows = [
+    row(day(end, -30), "loss"),
+    row(day(end, -29), "win"),
+    row(day(end, -7), "loss"),
+    row(day(end, -6), "win"),
+    row(day(end, -1), "push"),
+    row(end, "win"),
+    row(day(end, 1), "win"),
+    row(end, "win", "rebounds"),
+  ];
+  const windows = historyErrorWindows(rows, "points", end);
+  assert.deepEqual(windows.records.last7, { wins: 2, losses: 0, winRate: 1 });
+  assert.deepEqual(windows.records.last30, { wins: 3, losses: 1, winRate: 0.75 });
+  assert.deepEqual(windows.records.allTime, { wins: 4, losses: 2, winRate: 4 / 6 });
+  assert.deepEqual(windows.cumulativeWinRate.map((point) => point.rate), [0, 0.5, 1 / 3, 0.5, 0.6, 4 / 6]);
+  const rebounds = historyErrorWindows(rows, "rebounds", end);
+  assert.deepEqual(rebounds.records.allTime, { wins: 1, losses: 0, winRate: 1 });
+  assert.deepEqual(rebounds.cumulativeWinRate.map((point) => point.rate), [1]);
+  const source = readFileSync(new URL("../components/HistoryDesk.tsx", import.meta.url), "utf8");
+  assert.match(source, /<h2>Distance from the line<\/h2>/);
+  assert.match(source, /label: "Last 7 days"/);
+  assert.match(source, /label: "Last 30 days"/);
+  assert.match(source, /Cumulative win rate, all time, \{statLabel\}/);
+  const plot = source.slice(source.indexOf("Cumulative win rate, all time"), source.indexOf('aria-label="Bet players"'));
+  assert.equal(plot.split("<polyline").length - 1, 1);
+  assert.doesNotMatch(plot, /Last 7 days|Last 30 days/);
+});
+
 test("History labels slate, last 15 days, and all time abs error for the model and Vegas", () => {
   const source = readFileSync(new URL("../components/HistoryDesk.tsx", import.meta.url), "utf8");
   const route = readFileSync(new URL("../app/api/history/route.ts", import.meta.url), "utf8");
