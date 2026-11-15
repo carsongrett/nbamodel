@@ -89,7 +89,6 @@ export default function HomeworkPanel({
         const open = openKey === key;
         const lineupOpen = lineupKey === key;
         const market = marketText(row);
-        const who = `${row.teamId} vs ${row.opponentId}`;
         const team = teamLineup(lineups, row.teamId);
         const starters = team?.players.filter((player) => player.role === "starter") ?? [];
         const bench = team?.players.filter((player) => player.role === "bench") ?? [];
@@ -116,7 +115,7 @@ export default function HomeworkPanel({
             >
               <div className="homework-who">
                 <span className="player">{row.playerName}</span>
-                <span className="meta">{who} · {row.statLabel}</span>
+                <span className="meta"><strong className="homework-team">{row.teamId}</strong> vs {row.opponentId} · {row.statLabel}</span>
               </div>
               <div className="homework-numbers">
                 <span className="homework-delta" style={deltaStyle(row.delta)}>{signed(row.delta)}</span>

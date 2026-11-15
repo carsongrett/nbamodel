@@ -277,6 +277,7 @@ details.step-line > summary::marker { content: ""; }
 .homework-empty { margin: 0; }
 .homework-row + .homework-row { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
 .homework-who { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.homework-team { font-weight: 700; }
 .homework-numbers { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px; }
 .homework-delta {
   font-weight: 700;
