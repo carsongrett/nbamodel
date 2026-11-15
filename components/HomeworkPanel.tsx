@@ -29,7 +29,7 @@ export default function HomeworkPanel({ rows }: { rows: HomeworkCard[] }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
   return (
     <section className="homework card" aria-label="Homework">
-      <h2>Homework</h2>
+      <h2>Biggest deltas today</h2>
       {rows.length === 0 ? (
         <p className="homework-empty">No points or rebounds line on this board.</p>
       ) : rows.map((row) => {

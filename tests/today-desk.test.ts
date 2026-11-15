@@ -23,6 +23,8 @@ test("homework sits above the player list and is not a table", () => {
   const listAt = today.indexOf('<div className="game-list">');
   assert.ok(homeworkAt > 0 && homeworkAt < listAt);
   assert.match(panel, /aria-label="Homework"/);
+  assert.match(panel, /<h2>Biggest deltas today<\/h2>/);
+  assert.doesNotMatch(panel, /<h2>Homework<\/h2>/);
   assert.match(panel, /className="homework-delta"/);
   assert.match(panel, /className="homework-pill"/);
   assert.match(panel, /proj<\/span>/);
