@@ -48,6 +48,11 @@ function fmt(value: number | null | undefined, digits = 2): string {
   return value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
+function blankNum(value: number | null, digits = 2): string {
+  if (value == null || Number.isNaN(value)) return "";
+  return value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
 function pct(value: number | null): string {
   if (value == null) return "—";
   return `${(value * 100).toFixed(0)}%`;
@@ -306,6 +311,9 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                     <thead>
                       <tr>
                         <th>Player</th>
+                        <th className="num">Line</th>
+                        <th className="num">Projection</th>
+                        <th className="num">Actual</th>
                         <th className="num">Units</th>
                         <th className="num">Dollars</th>
                         <th>Result</th>
@@ -315,6 +323,9 @@ export default function HistoryDesk({ today, authConfigured }: { today: string; 
                       {listedBets.map((player) => (
                         <tr key={`${player.playerId}|${player.gameId}`}>
                           <td>{player.playerName}</td>
+                          <td className="num">{blankNum(player.line, 1)}</td>
+                          <td className="num">{blankNum(player.projection)}</td>
+                          <td className="num">{blankNum(player.actual, 1)}</td>
                           <td className="num">{formatStake(player.units)}</td>
                           <td className="num">{formatDollars(player.dollars)}</td>
                           <td><span className={`grade ${player.result.toLowerCase()}`}>{player.result}</span></td>
