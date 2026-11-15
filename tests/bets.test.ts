@@ -99,9 +99,9 @@ test("settled bets list the player and result, and pending bets stay separate", 
     { slateDate: today, units: 5, grade: "dnp", playerName: "Out Player" },
   ], today);
   assert.deepEqual(lists.settled, [
-    { slateDate: today, playerName: "Bam Adebayo", units: 3, dollars: 0, result: "Push" },
-    { slateDate: today, playerName: "Devin Booker", units: 2, dollars: 20, result: "Win" },
-    { slateDate: day(today, -1), playerName: "Kevin Durant", units: 1, dollars: -5, result: "Loss" },
+    { slateDate: today, playerName: "Bam Adebayo", units: 3, dollars: 0, result: "Push", line: null, projection: null, actual: null },
+    { slateDate: today, playerName: "Devin Booker", units: 2, dollars: 20, result: "Win", line: null, projection: null, actual: null },
+    { slateDate: day(today, -1), playerName: "Kevin Durant", units: 1, dollars: -5, result: "Loss", line: null, projection: null, actual: null },
   ]);
   assert.equal(formatSlateDay(lists.settled[0].slateDate), "11/5");
   assert.deepEqual(lists.pending, [
@@ -156,7 +156,7 @@ test("a bet with no actual is pending and is left out of the units", () => {
   assert.equal(view.dollars.today, 10);
   assert.equal(view.dollars.allTime, 10);
   assert.deepEqual(view.cumulativeDollars, [{ slateDate: today, dollars: 10 }]);
-  assert.deepEqual(view.settled, [{ slateDate: today, playerName: "Devin Booker", units: 2, dollars: 10, result: "Win" }]);
+  assert.deepEqual(view.settled, [{ slateDate: today, playerName: "Devin Booker", units: 2, dollars: 10, result: "Win", line: 24.5, projection: 28, actual: 30 }]);
   assert.deepEqual(view.pending, [{ playerName: "Kevin Durant", units: 1.5 }]);
 });
 
@@ -405,6 +405,16 @@ test("the desk drops the opponent column and adds bet tracking", () => {
   const settled = bets.slice(bets.indexOf('aria-label="Settled bets"'), bets.indexOf('aria-label="Pending bets"'));
   assert.match(settled, /<th>Date<\/th>/);
   assert.match(settled, /formatSlateDay/);
+  assert.match(settled, /<th className="num">Line<\/th>/);
+  assert.match(settled, /<th className="num">Projection<\/th>/);
+  assert.match(settled, /<th className="num">Actual<\/th>/);
+  assert.match(settled, /blankNum\(bet\.line, 1\)/);
+  assert.match(settled, /blankNum\(bet\.projection\)/);
+  assert.match(settled, /blankNum\(bet\.actual, 1\)/);
+  assert.ok(settled.indexOf(">Player<") < settled.indexOf(">Line<"));
+  assert.ok(settled.indexOf(">Line<") < settled.indexOf(">Projection<"));
+  assert.ok(settled.indexOf(">Projection<") < settled.indexOf(">Actual<"));
+  assert.ok(settled.indexOf(">Actual<") < settled.indexOf(">Units<"));
   assert.match(settled, /<th className="num">Dollars<\/th>/);
   assert.match(settled, /formatDollars/);
   assert.match(settled, /formatUnits\(resultUnits/);

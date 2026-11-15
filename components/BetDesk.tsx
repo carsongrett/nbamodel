@@ -12,6 +12,11 @@ const WINDOWS: { key: keyof BetWindows; label: string }[] = [
   { key: "allTime", label: "All time" },
 ];
 
+function blankNum(value: number | null, digits = 2): string {
+  if (value == null || Number.isNaN(value)) return "";
+  return value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
 function isWindow(value: BetTracking["dollars"] | undefined): value is BetTracking["dollars"] {
   return value != null && value.today != null && value.last7 != null && value.last30 != null && value.allTime != null;
 }
@@ -216,6 +221,9 @@ export default function BetDesk({ authConfigured }: { authConfigured: boolean })
                 <tr>
                   <th>Date</th>
                   <th>Player</th>
+                  <th className="num">Line</th>
+                  <th className="num">Projection</th>
+                  <th className="num">Actual</th>
                   <th className="num">Units</th>
                   <th className="num">Dollars</th>
                   <th>Result</th>
@@ -226,6 +234,9 @@ export default function BetDesk({ authConfigured }: { authConfigured: boolean })
                   <tr key={`${bet.slateDate}|${bet.playerName}|${bet.units}|${bet.result}|${index}`}>
                     <td>{formatSlateDay(bet.slateDate)}</td>
                     <td>{bet.playerName}</td>
+                    <td className="num">{blankNum(bet.line, 1)}</td>
+                    <td className="num">{blankNum(bet.projection)}</td>
+                    <td className="num">{blankNum(bet.actual, 1)}</td>
                     <td className="num">{formatUnits(resultUnits(bet.units, bet.result))}</td>
                     <td className="num">{formatDollars(bet.dollars)}</td>
                     <td><span className={`grade ${bet.result.toLowerCase()}`}>{bet.result}</span></td>
