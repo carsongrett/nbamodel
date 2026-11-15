@@ -92,7 +92,20 @@ details.bet-list > .table-wrap { margin-top: 0; }
 .line-distance-row span:first-child { grid-column: 1 / -1; }
 .line-distance-row strong { font-variant-numeric: tabular-nums; font-size: 16px; }
 .line-distance-set { margin: 0 0 10px; }
-.line-distance-set h3 { margin: 0 0 6px; font-size: 13px; }
+.line-distance-set > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: fit-content;
+}
+.line-distance-set > summary::-webkit-details-marker { display: none; }
+.line-distance-set > summary::marker { content: ""; }
+.line-distance-set > summary::before { content: "▸"; color: var(--muted); font-size: 11px; }
+.line-distance-set[open] > summary::before { content: "▾"; }
+.line-distance-set h3 { margin: 0; font-size: 13px; }
+.line-distance-set[open] > summary { margin-bottom: 6px; }
 .line-distance-set:last-child { margin-bottom: 0; }
 
 .board-note { margin: 0 0 8px; }

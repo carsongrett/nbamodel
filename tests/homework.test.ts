@@ -99,6 +99,61 @@ test("homework keeps the eight largest points and rebounds gaps", () => {
   assert.equal(dallas.some((row) => row.playerName === "Cut off"), true);
 });
 
+test("an Out label stays until the lineup check, then leaves biggest deltas", () => {
+  const rows = [
+    candidate("Daniel Gafford", "points", 40, 10, { playerId: "gaffoda01" }),
+    candidate("Daniel Gafford", "rebounds", 18, 6, { playerId: "gaffoda01" }),
+    candidate("Dereck Lively II", "points", 20, 12, { playerId: "livelde01" }),
+    candidate("P.J. Washington", "rebounds", 10, 6, { playerId: "washipj01", position: "PF" }),
+    candidate("Kyrie Irving", "points", 28, 25, { playerId: "irvinky01", position: "PG" }),
+    candidate("Naji Marshall", "points", 16, 14, { playerId: "marshna01", position: "SF" }),
+    candidate("Max Christie", "rebounds", 6, 4.5, { playerId: "chrisma01", position: "SG" }),
+    candidate("Dwight Powell", "points", 9, 8, { playerId: "poweldw01" }),
+    candidate("Cut off", "rebounds", 8, 7.5),
+    candidate("Ninth", "points", 11, 10.6),
+    candidate("Tenth", "rebounds", 5, 4.7),
+  ];
+  const before = homeworkRows({ date: DATE, rows, logs: [], lineups: null });
+  assert.equal(before[0]?.playerName, "Daniel Gafford");
+  assert.equal(before.filter((row) => row.playerName === "Daniel Gafford").length, 2);
+  assert.equal(before.some((row) => row.playerName === "Cut off"), false);
+  assert.equal(before.length, 8);
+
+  const lineups = [team([
+    { name: "Dereck Lively II", role: "starter", injury: null, position: "C" },
+    { name: "P.J. Washington", role: "starter", injury: "Questionable", position: "PF" },
+    { name: "Kyrie Irving", role: "starter", injury: "Probable", position: "PG" },
+    { name: "Naji Marshall", role: "starter", injury: "Doubtful", position: "SF" },
+    { name: "Max Christie", role: "starter", injury: "Out for season", position: "SG" },
+    { name: "Daniel Gafford", role: "bench", injury: "Out", position: "C" },
+    { name: "Dwight Powell", role: "bench", injury: null, position: "C" },
+  ])];
+  const after = homeworkRows({ date: DATE, rows, logs: [], lineups });
+  assert.equal(after.some((row) => row.playerName === "Daniel Gafford"), false);
+  assert.deepEqual(after.map((row) => row.playerName), [
+    "Dereck Lively II",
+    "P.J. Washington",
+    "Kyrie Irving",
+    "Naji Marshall",
+    "Max Christie",
+    "Dwight Powell",
+    "Cut off",
+    "Ninth",
+  ]);
+  assert.equal(after.find((row) => row.playerName === "P.J. Washington")?.injury, "Questionable");
+  assert.equal(after.find((row) => row.playerName === "Kyrie Irving")?.injury, "Probable");
+  assert.equal(after.find((row) => row.playerName === "Naji Marshall")?.injury, "Doubtful");
+  assert.equal(after.find((row) => row.playerName === "Max Christie")?.injury, "Out for season");
+
+  const unnamed = homeworkRows({
+    date: DATE,
+    rows: [candidate("Someone Else", "points", 30, 10)],
+    logs: [],
+    lineups,
+  });
+  assert.equal(unnamed[0]?.playerName, "Someone Else");
+});
+
 test("one player can take two rows when both stats are wide", () => {
   const rows = [
     candidate("Bam Adebayo", "points", 28, 22, { playerId: "adebaba01", position: "C", teamId: "MIA", opponentId: "ORL" }),

@@ -1,3 +1,4 @@
+import { finishRun } from "../../../lib/engine";
 import { commitLines, collectLines } from "../../../lib/sources/daily-run";
 import { readJson, respond, slatePayload, todayOr } from "../../../lib/http";
 import { updateDatabase } from "../../../lib/store";
@@ -12,10 +13,20 @@ export async function POST(request: Request) {
     const odds = await collectLines(date);
     return updateDatabase(async (db) => {
       const committed = commitLines(db, date, odds, savedAt);
+      if (!committed.db) {
+        return {
+          result: {
+            ...slatePayload(db, date),
+            message: committed.message,
+            messages: committed.messages,
+          },
+        };
+      }
+      const finished = finishRun(committed.db, "lines", new Date().toISOString());
       return {
-        db: committed.db,
+        db: finished,
         result: {
-          ...slatePayload(committed.db ?? db, date),
+          ...slatePayload(finished, date),
           message: committed.message,
           messages: committed.messages,
         },
