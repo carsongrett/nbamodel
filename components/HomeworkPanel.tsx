@@ -127,7 +127,6 @@ export default function HomeworkPanel({
                   {row.last5.split(" · ").map((line, index) => <span key={index}>{line}</span>)}
                 </p>
               ) : null}
-              {row.note ? <p className="homework-note">{row.note}</p> : null}
             </div>
             <div className="homework-actions">
               <label className="homework-units">

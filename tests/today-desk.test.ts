@@ -60,8 +60,12 @@ test("homework sits above the player list and is not a table", () => {
   assert.match(css, /\.homework-last > span \{ display: block; \}/);
   assert.match(panel, /className="homework-note"/);
   assert.ok(panel.indexOf("homework-last") < panel.indexOf("homework-note"));
+  assert.doesNotMatch(panel, /row\.note/);
+  assert.doesNotMatch(today, /homeworkStories/);
   assert.doesNotMatch(panel, /<table/);
   assert.doesNotMatch(homework, /openai|fetch\(/i);
+  assert.doesNotMatch(projectionsRoute, /requestHomeworkStories/);
+  assert.doesNotMatch(projectionsRoute, /homework-story/);
   assert.match(http, /priorGames: priorGames\(db, date\)/);
 });
 
@@ -130,7 +134,7 @@ test("the status line names Projections or Lines, never a player count", () => {
   assert.match(today, /setLinesAt\(\(current\) => current \?\? clockInstant\(slate\.linesAt\)\)/);
   assert.match(page, /initialProjectionsAt=\{slate\.projectionsAt\}/);
   assert.match(page, /initialLinesAt=\{slate\.linesAt\}/);
-  assert.match(projectionsRoute, /finishRun\(next, "projections", new Date\(\)\.toISOString\(\)\)/);
+  assert.match(projectionsRoute, /finishRun\(committed\.db, "projections", new Date\(\)\.toISOString\(\)\)/);
   assert.match(linesRoute, /finishRun\(committed\.db, "lines", new Date\(\)\.toISOString\(\)\)/);
   assert.doesNotMatch(settingsRoute, /finishRun/);
   assert.doesNotMatch(betsRoute, /finishRun/);
