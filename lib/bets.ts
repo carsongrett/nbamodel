@@ -1,4 +1,4 @@
-import { gradeResult, idsEqual, type Actual, type Database, type Grade, type Stat } from "./engine";
+import { edgeAndPick, gradeResult, idsEqual, type Actual, type Database, type Grade, type Stat } from "./engine";
 
 export type BetWindows = {
   today: number;
@@ -123,6 +123,14 @@ export type SettledBetRow = {
 
 export type PendingBetRow = {
   playerName: string;
+  /** Saved stat. Null when that save has none. */
+  stat: Stat | null;
+  /** Over or under from the saved projection and line. Null when either number is missing. */
+  side: "over" | "under" | null;
+  /** Saved pregame line. Null when that save has none. */
+  line: number | null;
+  /** Saved pregame projection. Null when that save has none. */
+  projection: number | null;
   units: number;
 };
 
@@ -152,6 +160,7 @@ export function cumulativeSettledDollars(bets: readonly (SettledBet & { playerNa
 
 type NamedBet = SettledBet & {
   playerName: string;
+  stat?: Stat | null;
   line?: number | null;
   projection?: number | null;
   actual?: number | null;
@@ -229,7 +238,14 @@ export function betLists(bets: readonly NamedBet[], today: string): { settled: S
         actual: finiteNumber(bet.actual),
       });
     } else if (bet.grade === "unresolved") {
-      pending.push({ playerName: bet.playerName, units: bet.units });
+      pending.push({
+        playerName: bet.playerName,
+        stat: bet.stat ?? null,
+        side: pendingSide(bet.projection, bet.line),
+        line: finiteNumber(bet.line),
+        projection: finiteNumber(bet.projection),
+        units: bet.units,
+      });
     }
   }
   return { settled, pending };
@@ -263,6 +279,7 @@ function namedBets(db: Database): NamedBet[] {
       grade: graded.grade,
       playerName,
       unitDollars: row.unitDollars,
+      stat: row.stat,
       line: finiteNumber(row.line),
       projection: finiteNumber(row.projection),
       actual: actualNumber(actual, row.stat),
@@ -339,6 +356,12 @@ export function betPlayers(rows: readonly BetRow[], stat: Stat): BetPlayer[] {
 
 function finiteNumber(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** Over or under from the numbers saved with the bet. A missing number has no side. */
+function pendingSide(projection: number | null | undefined, line: number | null | undefined): "over" | "under" | null {
+  const pick = edgeAndPick(finiteNumber(projection), finiteNumber(line)).pick;
+  return pick === "over" || pick === "under" ? pick : null;
 }
 
 export function formatUnits(value: number): string {

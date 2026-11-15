@@ -93,7 +93,7 @@ test("settled bets list the player and result, and pending bets stay separate", 
     { slateDate: today, units: 2, grade: "win", playerName: "Devin Booker", unitDollars: 10 },
     { slateDate: day(today, -1), units: 1, grade: "loss", playerName: "Kevin Durant", unitDollars: 5 },
     { slateDate: today, units: 3, grade: "push", playerName: "Bam Adebayo" },
-    { slateDate: today, units: 4, grade: "unresolved", playerName: "Jalen Brunson" },
+    { slateDate: today, units: 4, grade: "unresolved", playerName: "Jalen Brunson", stat: "rebounds", line: 6.5, projection: 5.1 },
     { slateDate: day(today, -40), units: 2, grade: "unresolved", playerName: "Old Pending" },
     { slateDate: day(today, -7), units: 4, grade: "win", playerName: "Old Winner", unitDollars: 5 },
     { slateDate: today, units: 5, grade: "dnp", playerName: "Out Player" },
@@ -105,8 +105,8 @@ test("settled bets list the player and result, and pending bets stay separate", 
   ]);
   assert.equal(formatSlateDay(lists.settled[0].slateDate), "11/5");
   assert.deepEqual(lists.pending, [
-    { playerName: "Jalen Brunson", units: 4 },
-    { playerName: "Old Pending", units: 2 },
+    { playerName: "Jalen Brunson", stat: "rebounds", side: "under", line: 6.5, projection: 5.1, units: 4 },
+    { playerName: "Old Pending", stat: null, side: null, line: null, projection: null, units: 2 },
   ]);
 });
 
@@ -157,7 +157,7 @@ test("a bet with no actual is pending and is left out of the units", () => {
   assert.equal(view.dollars.allTime, 10);
   assert.deepEqual(view.cumulativeDollars, [{ slateDate: today, dollars: 10 }]);
   assert.deepEqual(view.settled, [{ slateDate: today, playerName: "Devin Booker", units: 2, dollars: 10, result: "Win", line: 24.5, projection: 28, actual: 30 }]);
-  assert.deepEqual(view.pending, [{ playerName: "Kevin Durant", units: 1.5 }]);
+  assert.deepEqual(view.pending, [{ playerName: "Kevin Durant", stat: "points", side: "over", line: 25.5, projection: 27, units: 1.5 }]);
 });
 
 test("cumulative dollars walk every settled bet in date order at that row’s own size", () => {
@@ -421,6 +421,19 @@ test("the desk drops the opponent column and adds bet tracking", () => {
   const pending = bets.slice(bets.indexOf('aria-label="Pending bets"'));
   assert.doesNotMatch(pending, /<th>Date<\/th>/);
   assert.doesNotMatch(pending, /Dollars/);
+  assert.match(pending, /<th>Stat<\/th>/);
+  assert.match(pending, /<th>Over\/Under<\/th>/);
+  assert.match(pending, /<th className="num">Line<\/th>/);
+  assert.match(pending, /<th className="num">Projection<\/th>/);
+  assert.match(pending, /blankNum\(bet\.line, 1\)/);
+  assert.match(pending, /blankNum\(bet\.projection\)/);
+  assert.ok(pending.indexOf(">Player<") < pending.indexOf(">Stat<"));
+  assert.ok(pending.indexOf(">Stat<") < pending.indexOf(">Over/Under<"));
+  assert.ok(pending.indexOf(">Over/Under<") < pending.indexOf(">Line<"));
+  assert.ok(pending.indexOf(">Line<") < pending.indexOf(">Projection<"));
+  assert.ok(pending.indexOf(">Projection<") < pending.indexOf(">Units<"));
+  assert.doesNotMatch(settled, /<th>Stat<\/th>/);
+  assert.doesNotMatch(settled, /Over\/Under/);
   assert.match(bets, /totals\.dollars/);
   assert.match(todayBoard, /aria-label="Dollars per unit"/);
   assert.match(history, /<th className="num">Dollars<\/th>/);
