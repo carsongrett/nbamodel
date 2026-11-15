@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { betLists, betPlayers, betProfit, betsFromDatabase, betTracking, betWindowDollars, betWindowRecords, betWindowTotals, formatDollars, formatRecord, formatSlateDay, formatStake, formatUnits, inLast7Days } from "../lib/bets.ts";
+import { betLists, betPlayers, betProfit, betsFromDatabase, betTracking, betWindowDollars, betWindowRecords, betWindowTotals, cumulativeSettledDollars, formatDollars, formatRecord, formatSlateDay, formatStake, formatUnits, inLast7Days } from "../lib/bets.ts";
 import { applyModelRun, buildSlate, CURRENT_SEASON, emptyDatabase, importRecords, setBetUnits, setPropLine, type Player } from "../lib/engine.ts";
 import { applyBettingProsProbe } from "../lib/sources/apply-bettingpros.ts";
 import type { ProbeResult } from "../lib/sources/bettingpros.ts";
@@ -155,8 +155,30 @@ test("a bet with no actual is pending and is left out of the units", () => {
   assert.equal(formatRecord(view.records.allTime.wins, view.records.allTime.losses), "1–0");
   assert.equal(view.dollars.today, 10);
   assert.equal(view.dollars.allTime, 10);
+  assert.deepEqual(view.cumulativeDollars, [{ slateDate: today, dollars: 10 }]);
   assert.deepEqual(view.settled, [{ slateDate: today, playerName: "Devin Booker", units: 2, dollars: 10, result: "Win" }]);
   assert.deepEqual(view.pending, [{ playerName: "Kevin Durant", units: 1.5 }]);
+});
+
+test("cumulative dollars walk every settled bet in date order at that row’s own size", () => {
+  const oldDate = day(today, -40);
+  const bets = [
+    { slateDate: today, units: 2, grade: "win" as const, unitDollars: 10, playerName: "Devin Booker" },
+    { slateDate: day(today, -1), units: 1, grade: "loss" as const, unitDollars: 5, playerName: "Kevin Durant" },
+    { slateDate: day(today, -1), units: 3, grade: "push" as const, playerName: "Bam Adebayo" },
+    { slateDate: today, units: 4, grade: "unresolved" as const, unitDollars: 25, playerName: "Jalen Brunson" },
+    { slateDate: oldDate, units: 4, grade: "win" as const, unitDollars: 5, playerName: "Old Winner" },
+    { slateDate: day(today, -2), units: 2, grade: "dnp" as const, unitDollars: 50, playerName: "Out Player" },
+  ];
+  const line = cumulativeSettledDollars(bets);
+  assert.deepEqual(line, [
+    { slateDate: oldDate, dollars: 20 },
+    { slateDate: day(today, -1), dollars: 20 },
+    { slateDate: day(today, -1), dollars: 15 },
+    { slateDate: today, dollars: 35 },
+  ]);
+  assert.equal(line.at(-1)?.dollars, betWindowDollars(bets, today).allTime);
+  assert.equal(betWindowTotals(bets, today).allTime, 5);
 });
 
 function desk(): { db: ReturnType<typeof emptyDatabase>; player: Player; gameId: string } {
@@ -373,8 +395,11 @@ test("the desk drops the opponent column and adds bet tracking", () => {
   assert.match(bets, /Last 30 days/);
   assert.match(bets, /All time/);
   assert.match(bets, /className="bet-record"/);
-  assert.match(bets, /aria-label="Settled bets"/);
+  assert.match(bets, /<details className="game bet-list" open aria-label="Settled bets">/);
   assert.match(bets, /aria-label="Pending bets"/);
+  assert.match(bets, /Cumulative dollars, all settled bets/);
+  assert.match(bets, /cumulativeDollars/);
+  assert.doesNotMatch(bets, /Last 15/);
   assert.match(bets, /<th>Player<\/th>/);
   assert.match(bets, /<th className="num">Units<\/th>/);
   const settled = bets.slice(bets.indexOf('aria-label="Settled bets"'), bets.indexOf('aria-label="Pending bets"'));
@@ -389,5 +414,6 @@ test("the desk drops the opponent column and adds bet tracking", () => {
   assert.match(bets, /totals\.dollars/);
   assert.match(todayBoard, /aria-label="Dollars per unit"/);
   assert.match(history, /<th className="num">Dollars<\/th>/);
-  assert.doesNotMatch(bets, /<svg|chart/i);
+  assert.match(bets, /<polyline/);
+  assert.doesNotMatch(bets, /chart/i);
 });
