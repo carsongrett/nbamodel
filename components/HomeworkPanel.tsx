@@ -4,7 +4,7 @@ import { useState, type CSSProperties, type KeyboardEvent } from "react";
 import { formatStake } from "../lib/bets";
 import type { SlateStat } from "../lib/engine";
 import { lastFifteenMpgLabel, type HomeworkLog, type HomeworkRow } from "../lib/homework";
-import type { LineupPlayer, LineupTeam } from "../lib/sources/rotowire-lineups";
+import { lineupPlayer, type LineupPlayer, type LineupTeam } from "../lib/sources/rotowire-lineups";
 import { canonicalTeam } from "../lib/sources/teams";
 import Trace from "./Trace";
 
@@ -66,6 +66,11 @@ function lineupName(player: LineupPlayer, role: string): string {
   return player.position ? `${player.name} · ${player.position} · ${role}` : `${player.name} · ${role}`;
 }
 
+function storedPosition(lineups: readonly LineupTeam[] | null, teamId: string, playerName: string): string | null {
+  if (!lineups) return null;
+  return lineupPlayer([...lineups], teamId, playerName)?.player.position || null;
+}
+
 export default function HomeworkPanel({
   rows,
   lineups,
@@ -91,6 +96,7 @@ export default function HomeworkPanel({
         const open = openKey === key;
         const lineupOpen = lineupKey === key;
         const market = marketText(row);
+        const position = storedPosition(lineups, row.teamId, row.playerName);
         function toggle() {
           setOpenKey(open ? null : key);
         }
@@ -113,8 +119,8 @@ export default function HomeworkPanel({
               onKeyDown={onKeyDown}
             >
               <div className="homework-who">
-                <span className="player">{row.playerName}</span>
-                <span className="meta"><strong className="homework-team">{row.teamId}</strong> vs {row.opponentId} · {row.statLabel}</span>
+                <span className="player">{row.playerName}{position ? ` · ${position}` : ""}</span>
+                <span className="meta">{position ? "· " : ""}<strong className="homework-team">{row.teamId}</strong> vs {row.opponentId} · {row.statLabel}</span>
               </div>
               <div className="homework-numbers">
                 <span className="homework-delta" style={deltaStyle(row.delta)}>{signed(row.delta)}</span>
