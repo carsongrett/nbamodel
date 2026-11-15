@@ -165,6 +165,9 @@ td.delta { border-radius: 6px; }
   font-size: 13px;
   white-space: nowrap;
 }
+.lineup-note.with-position { margin-left: 0; }
+.game-lineup-button { margin-left: 12px; }
+.game > .homework-breakout { padding: 0 14px 8px; }
 .lineup-injury { color: var(--bad); }
 .meta { color: var(--muted); font-size: 13px; }
 .flags { display: flex; flex-wrap: wrap; gap: 4px; max-width: 280px; }
