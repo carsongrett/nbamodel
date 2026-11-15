@@ -60,12 +60,19 @@ button:disabled { opacity: 0.55; cursor: wait; }
 .bet-list .table-wrap { margin-top: 8px; }
 details.bet-list > .table-wrap { margin-top: 0; }
 .game.bet-list > summary { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
-.cumulative-dollars { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 14px; }
-.cumulative-dollars h2 { margin: 0; flex: 1 1 16rem; font-size: 16px; }
-.cumulative-spark { flex: 2 1 12rem; height: 36px; min-width: 8rem; }
-.cumulative-spark .zero { fill: none; stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.cumulative-spark .path { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.cumulative-dollars strong { margin-left: auto; font-size: 16px; font-variant-numeric: tabular-nums; }
+.cumulative-dollars { margin-bottom: 14px; }
+.cumulative-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.cumulative-dollars h2 { margin: 0; font-size: 16px; }
+.cumulative-dollars strong { font-size: 16px; font-variant-numeric: tabular-nums; }
+.cumulative-square { display: block; width: min(100%, 440px); height: auto; aspect-ratio: 1; }
+.cumulative-square .frame { fill: #fff; stroke: var(--line); }
+.cumulative-square .grid { stroke: var(--line); stroke-width: 1; }
+.cumulative-square .zero { stroke: #b7ad9e; stroke-width: 1.5; }
+.cumulative-square .path { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.cumulative-square .dot { fill: var(--accent); stroke: #fff; stroke-width: 1.5; }
+.cumulative-square text { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.cumulative-square .value { fill: var(--ink); font-size: 11px; font-weight: 600; }
+.cumulative-square .axis { font-size: 11px; letter-spacing: 0.06em; }
 
 .line-distance { margin: 0 0 14px; }
 .line-distance h2 { margin: 0 0 4px; font-size: 16px; }

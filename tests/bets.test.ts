@@ -415,5 +415,9 @@ test("the desk drops the opponent column and adds bet tracking", () => {
   assert.match(todayBoard, /aria-label="Dollars per unit"/);
   assert.match(history, /<th className="num">Dollars<\/th>/);
   assert.match(bets, /<polyline/);
+  assert.match(bets, /viewBox="0 0 400 400"/);
+  assert.match(bets, />Dollars</);
+  assert.match(bets, />Date</);
+  assert.doesNotMatch(bets, /preserveAspectRatio="none"/);
   assert.doesNotMatch(bets, /chart/i);
 });
