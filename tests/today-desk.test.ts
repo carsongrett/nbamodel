@@ -65,6 +65,8 @@ test("a homework row opens the same formula lines, and a second click or close h
   assert.match(trace, /label="Dimers"/);
   assert.match(trace, /if \(bare\) return body/);
   assert.match(trace, /<summary>Projection trace<\/summary>/);
+  assert.match(css, /\.trace-body \{[^}]*width: 280px;/);
+  assert.match(css, /grid-template-columns: minmax\(0, 1fr\) auto;/);
 });
 
 test("Projections and Lines ask first, and the other buttons do not", () => {
