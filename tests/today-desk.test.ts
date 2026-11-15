@@ -63,6 +63,9 @@ test("a homework row opens the same formula lines, and a second click or close h
   assert.match(today, /locked: source\.locked/);
   assert.match(trace, /label="SL projection"/);
   assert.match(trace, /label="Dimers"/);
+  assert.match(trace, /label="65\/35 blend"/);
+  assert.match(trace, /bothSources \? null : dimers\.detail/);
+  assert.match(trace, /bothSources \? <Step label="65\/35 blend"/);
   assert.match(trace, /if \(bare\) return body/);
   assert.match(trace, /<summary>Projection trace<\/summary>/);
   assert.match(css, /\.trace-body \{[^}]*width: 280px;/);
