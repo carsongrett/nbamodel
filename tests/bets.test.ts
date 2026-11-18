@@ -105,9 +105,10 @@ test("settled bets list the player and result, and pending bets stay separate", 
   ]);
   assert.equal(formatSlateDay(lists.settled[0].slateDate), "11/5");
   assert.deepEqual(lists.pending, [
-    { playerName: "Jalen Brunson", stat: "rebounds", side: "under", line: 6.5, projection: 5.1, units: 4 },
-    { playerName: "Old Pending", stat: null, side: null, line: null, projection: null, units: 2 },
+    { slateDate: today, playerName: "Jalen Brunson", stat: "rebounds", side: "under", line: 6.5, projection: 5.1, units: 4 },
+    { slateDate: day(today, -40), playerName: "Old Pending", stat: null, side: null, line: null, projection: null, units: 2 },
   ]);
+  assert.equal(formatSlateDay(lists.pending[1].slateDate), "9/26");
 });
 
 test("a bet with no actual is pending and is left out of the units", () => {
@@ -157,7 +158,7 @@ test("a bet with no actual is pending and is left out of the units", () => {
   assert.equal(view.dollars.allTime, 10);
   assert.deepEqual(view.cumulativeDollars, [{ slateDate: today, dollars: 10 }]);
   assert.deepEqual(view.settled, [{ slateDate: today, playerName: "Devin Booker", units: 2, dollars: 10, result: "Win", line: 24.5, projection: 28, actual: 30 }]);
-  assert.deepEqual(view.pending, [{ playerName: "Kevin Durant", stat: "points", side: "over", line: 25.5, projection: 27, units: 1.5 }]);
+  assert.deepEqual(view.pending, [{ slateDate: today, playerName: "Kevin Durant", stat: "points", side: "over", line: 25.5, projection: 27, units: 1.5 }]);
 });
 
 test("cumulative dollars walk every settled bet in date order at that row’s own size", () => {
@@ -419,7 +420,8 @@ test("the desk drops the opponent column and adds bet tracking", () => {
   assert.match(settled, /formatDollars/);
   assert.match(settled, /formatUnits\(resultUnits/);
   const pending = bets.slice(bets.indexOf('aria-label="Pending bets"'));
-  assert.doesNotMatch(pending, /<th>Date<\/th>/);
+  assert.match(pending, /<th>Date<\/th>/);
+  assert.match(pending, /formatSlateDay\(bet\.slateDate\)/);
   assert.doesNotMatch(pending, /Dollars/);
   assert.match(pending, /<th>Stat<\/th>/);
   assert.match(pending, /<th>Over\/Under<\/th>/);
@@ -427,6 +429,7 @@ test("the desk drops the opponent column and adds bet tracking", () => {
   assert.match(pending, /<th className="num">Projection<\/th>/);
   assert.match(pending, /blankNum\(bet\.line, 1\)/);
   assert.match(pending, /blankNum\(bet\.projection\)/);
+  assert.ok(pending.indexOf(">Date<") < pending.indexOf(">Player<"));
   assert.ok(pending.indexOf(">Player<") < pending.indexOf(">Stat<"));
   assert.ok(pending.indexOf(">Stat<") < pending.indexOf(">Over/Under<"));
   assert.ok(pending.indexOf(">Over/Under<") < pending.indexOf(">Line<"));

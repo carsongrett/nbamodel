@@ -21,7 +21,7 @@ import {
 import { normalizePersonName } from "./names";
 import type { DimersFetch, DimersPlayer } from "./dimers";
 import { pageIsCurrentSeason, pageMentionsCurrentSeason, parseBrefPlayers, parseFanduelDefense, parseSportsLine, parseTeamPace, parseTeamRankingsOppRebounds, type BrefPlayerRow } from "./parsers";
-import { matchupGameId } from "./teams";
+import { matchupGameId, shiftDate } from "./teams";
 
 export const BREF = "basketball-reference";
 export const SPORTSLINE = "sportsline";
@@ -182,6 +182,35 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
     }
     rates = upsertByKey(rates, [next], (rate) => rate.playerId).rows;
   };
+  const storedGameIds = () => {
+    const ids = new Set<string>();
+    for (const game of games) ids.add(game.gameId);
+    for (const row of db.pregame) ids.add(row.gameId);
+    for (const row of db.lines) ids.add(row.gameId);
+    for (const row of projections) ids.add(row.gameId);
+    return ids;
+  };
+  const sameMatchup = (game: Game, away: string, home: string) =>
+    (game.awayTeamId === away && game.homeTeamId === home) || (game.awayTeamId === home && game.homeTeamId === away);
+  const findLeaderGameId = (date: string, away: string, home: string): string | null => {
+    const exact = matchupGameId(date, away, home);
+    const swapped = matchupGameId(date, home, away);
+    const listed = games.find((game) => game.gameId === exact)
+      ?? games.find((game) => game.gameId === swapped)
+      ?? games.find((game) => game.gameDate === date && sameMatchup(game, away, home));
+    if (listed) return listed.gameId;
+    const saved = storedGameIds();
+    if (saved.has(exact)) return exact;
+    if (saved.has(swapped)) return swapped;
+    return null;
+  };
+  const sidesForGameId = (gameId: string, away: string, home: string) => {
+    const existing = games.find((game) => game.gameId === gameId);
+    if (existing) return { away: existing.awayTeamId, home: existing.homeTeamId };
+    const sides = gameId.split("|")[1]?.split("@");
+    if (sides?.length === 2 && sides[0] && sides[1]) return { away: sides[0], home: sides[1] };
+    return { away, home };
+  };
   const storeLeaderActuals = (html: string, date: string, createGames: boolean) => {
     let stored = 0;
     let missingRoster = 0;
@@ -189,19 +218,26 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
       if (!row.team || !row.opponent) continue;
       const away = row.location === "@" ? row.team : row.opponent;
       const home = row.location === "@" ? row.opponent : row.team;
-      const gameId = matchupGameId(date, away, home);
-      if (!createGames && !games.some((game) => game.gameId === gameId)) continue;
-      ensureTeam(away);
-      ensureTeam(home);
+      const matchedId = findLeaderGameId(date, away, home);
+      if (!matchedId && !createGames) continue;
+      const onRoster = players.some((player) => player.playerId === row.playerId);
+      if (!matchedId && date !== slateDate && !onRoster) {
+        missingRoster++;
+        continue;
+      }
+      const gameId = matchedId ?? matchupGameId(date, away, home);
+      const sides = sidesForGameId(gameId, away, home);
+      ensureTeam(sides.away);
+      ensureTeam(sides.home);
       ensureGame({
         gameId,
         season: CURRENT_SEASON,
         gameDate: date,
-        homeTeamId: home,
-        awayTeamId: away,
+        homeTeamId: sides.home,
+        awayTeamId: sides.away,
         status: "final",
       });
-      if (!players.some((player) => player.playerId === row.playerId)) {
+      if (!onRoster) {
         missingRoster++;
         continue;
       }
@@ -488,9 +524,10 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
 
   let priorStored = 0;
   let priorDates = 0;
+  const lastNight = shiftDate(slateDate, -1);
   for (const day of fetched.last15) {
     if (!day.page.ok) continue;
-    const result = storeLeaderActuals(day.page.html, day.date, false);
+    const result = storeLeaderActuals(day.page.html, day.date, day.date === lastNight);
     if (result.stored > 0) {
       priorStored += result.stored;
       priorDates += 1;
@@ -502,7 +539,7 @@ export function applyPublicPages(db: Database, slateDate: string, fetched: Publi
     messages.push({
       level: "info",
       playerId: null,
-      message: `Basketball Reference leaders graded ${results} on ${dates} already on the desk.`,
+      message: `Basketball Reference leaders graded ${results} on ${dates}.`,
     });
   }
 
