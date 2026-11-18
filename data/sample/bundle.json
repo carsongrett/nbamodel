@@ -1,0 +1,1089 @@
+{
+  "id_map": [
+    {
+      "source": "sportsline",
+      "entity_type": "player",
+      "source_id": "sl-luka",
+      "canonical_id": "player_luka"
+    }
+  ],
+  "teams": [
+    {
+      "team_id": "DAL",
+      "name": "Dallas Mavericks"
+    },
+    {
+      "team_id": "BOS",
+      "name": "Boston Celtics"
+    },
+    {
+      "team_id": "MIL",
+      "name": "Milwaukee Bucks"
+    },
+    {
+      "team_id": "MIA",
+      "name": "Miami Heat"
+    }
+  ],
+  "players": [
+    {
+      "player_id": "player_luka",
+      "display_name": "Luka Doncic",
+      "team_id": "DAL",
+      "position": "PG",
+      "season": "2026-27"
+    },
+    {
+      "player_id": "player_kyrie",
+      "display_name": "Kyrie Irving",
+      "team_id": "DAL",
+      "position": "PG",
+      "season": "2026-27"
+    },
+    {
+      "player_id": "player_gafford",
+      "display_name": "Daniel Gafford",
+      "team_id": "DAL",
+      "position": "C",
+      "season": "2026-27"
+    },
+    {
+      "player_id": "player_tatum",
+      "display_name": "Jayson Tatum",
+      "team_id": "BOS",
+      "position": "SF",
+      "season": "2026-27"
+    },
+    {
+      "player_id": "player_brown",
+      "display_name": "Jaylen Brown",
+      "team_id": "BOS",
+      "position": "SF",
+      "season": "2026-27"
+    },
+    {
+      "player_id": "player_white",
+      "display_name": "Derrick White",
+      "team_id": "BOS",
+      "position": "PG",
+      "season": "2026-27"
+    },
+    {
+      "player_id": "player_giannis",
+      "display_name": "Giannis Antetokounmpo",
+      "team_id": "MIL",
+      "position": "PF",
+      "season": "2026-27"
+    },
+    {
+      "player_id": "player_dame",
+      "display_name": "Damian Lillard",
+      "team_id": "MIL",
+      "position": "PG",
+      "season": "2026-27"
+    },
+    {
+      "player_id": "player_lopez",
+      "display_name": "Brook Lopez",
+      "team_id": "MIL",
+      "position": "C",
+      "season": "2026-27"
+    },
+    {
+      "player_id": "player_bam",
+      "display_name": "Bam Adebayo",
+      "team_id": "MIA",
+      "position": "C",
+      "season": "2026-27"
+    },
+    {
+      "player_id": "player_butler",
+      "display_name": "Jimmy Butler",
+      "team_id": "MIA",
+      "position": "SF",
+      "season": "2026-27"
+    }
+  ],
+  "games": [
+    {
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "game_date": "2026-11-01",
+      "home_team_id": "BOS",
+      "away_team_id": "DAL",
+      "status": "scheduled"
+    },
+    {
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "game_date": "2026-10-31",
+      "home_team_id": "MIA",
+      "away_team_id": "MIL",
+      "status": "final"
+    }
+  ],
+  "pace": [
+    {
+      "team_id": "DAL",
+      "season": "2026-27",
+      "pace": 100.4,
+      "pace_diff": -0.6,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "team_id": "BOS",
+      "season": "2026-27",
+      "pace": 99.2,
+      "pace_diff": 1.4,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "team_id": "MIL",
+      "season": "2026-27",
+      "pace": 101,
+      "pace_diff": 0.4,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "team_id": "MIA",
+      "season": "2026-27",
+      "pace": 98,
+      "pace_diff": -1.1,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    }
+  ],
+  "opp_rebounds": [
+    {
+      "team_id": "BOS",
+      "season": "2026-27",
+      "rebound_diff": 1.2,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "team_id": "DAL",
+      "season": "2026-27",
+      "rebound_diff": 0.5,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "team_id": "MIL",
+      "season": "2026-27",
+      "rebound_diff": -0.4,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    }
+  ],
+  "dvp": [
+    {
+      "team_id": "BOS",
+      "position": "PG",
+      "season": "2026-27",
+      "points_diff": 1.8,
+      "rebounds_diff": 0.4,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "team_id": "BOS",
+      "position": "SF",
+      "season": "2026-27",
+      "points_diff": 0.6,
+      "rebounds_diff": -0.2,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "team_id": "DAL",
+      "position": "PG",
+      "season": "2026-27",
+      "points_diff": -0.4,
+      "rebounds_diff": 0.2,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "team_id": "DAL",
+      "position": "SF",
+      "season": "2026-27",
+      "points_diff": 1.1,
+      "rebounds_diff": 0.7,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "team_id": "MIA",
+      "position": "PG",
+      "season": "2026-27",
+      "points_diff": 0.8,
+      "rebounds_diff": 0.1,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "team_id": "MIA",
+      "position": "PF",
+      "season": "2026-27",
+      "points_diff": 1.5,
+      "rebounds_diff": 0.6,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "team_id": "MIA",
+      "position": "C",
+      "season": "2026-27",
+      "points_diff": -0.3,
+      "rebounds_diff": 0.9,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "team_id": "MIL",
+      "position": "C",
+      "season": "2026-27",
+      "points_diff": 0.2,
+      "rebounds_diff": 1.1,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "team_id": "MIL",
+      "position": "SF",
+      "season": "2026-27",
+      "points_diff": 0.4,
+      "rebounds_diff": 0.3,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    }
+  ],
+  "vegas": [
+    {
+      "game_id": "game_20261101_dal_bos",
+      "team_id": "DAL",
+      "season": "2026-27",
+      "spread": 6.5,
+      "total": 224.5,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "game_id": "game_20261101_dal_bos",
+      "team_id": "BOS",
+      "season": "2026-27",
+      "spread": -6.5,
+      "total": 224.5,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "game_id": "game_20261031_mil_mia",
+      "team_id": "MIL",
+      "season": "2026-27",
+      "spread": -4.5,
+      "total": 226,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "game_id": "game_20261031_mil_mia",
+      "team_id": "MIA",
+      "season": "2026-27",
+      "spread": 4.5,
+      "total": 226,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    }
+  ],
+  "player_rates": [
+    {
+      "player_id": "player_luka",
+      "season": "2026-27",
+      "pts_per_100": 36.5,
+      "pts_per_100_games": 8,
+      "reb_per_minute": 0.24,
+      "reb_per_minute_games": 8,
+      "recent_points_per_game": 33,
+      "recent_rebounds_per_game": 9,
+      "recent_games": 5,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_kyrie",
+      "season": "2026-27",
+      "pts_per_100": null,
+      "pts_per_100_games": null,
+      "reb_per_minute": 0.12,
+      "reb_per_minute_games": 8,
+      "recent_points_per_game": 26,
+      "recent_rebounds_per_game": 4.1,
+      "recent_games": 6,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_gafford",
+      "season": "2026-27",
+      "pts_per_100": 18,
+      "pts_per_100_games": 8,
+      "reb_per_minute": 0.32,
+      "reb_per_minute_games": 8,
+      "recent_points_per_game": 11,
+      "recent_rebounds_per_game": 9,
+      "recent_games": 4,
+      "source_timestamp": "2026-10-30T15:00:00Z"
+    },
+    {
+      "player_id": "player_tatum",
+      "season": "2026-27",
+      "pts_per_100": 34,
+      "pts_per_100_games": 8,
+      "reb_per_minute": 0.23,
+      "reb_per_minute_games": 8,
+      "recent_points_per_game": 29,
+      "recent_rebounds_per_game": 8.2,
+      "recent_games": 6,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_brown",
+      "season": "2026-27",
+      "pts_per_100": 28,
+      "pts_per_100_games": 8,
+      "reb_per_minute": 0.18,
+      "reb_per_minute_games": 8,
+      "recent_points_per_game": 30,
+      "recent_rebounds_per_game": 8,
+      "recent_games": 1,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_white",
+      "season": "2026-27",
+      "pts_per_100": 22,
+      "pts_per_100_games": 8,
+      "reb_per_minute": null,
+      "reb_per_minute_games": null,
+      "recent_points_per_game": 16,
+      "recent_rebounds_per_game": 4.2,
+      "recent_games": 5,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_giannis",
+      "season": "2026-27",
+      "pts_per_100": 38,
+      "pts_per_100_games": 8,
+      "reb_per_minute": 0.3,
+      "reb_per_minute_games": 8,
+      "recent_points_per_game": 32,
+      "recent_rebounds_per_game": 11,
+      "recent_games": 6,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_dame",
+      "season": "2026-27",
+      "pts_per_100": 30,
+      "pts_per_100_games": 10,
+      "reb_per_minute": 0.12,
+      "reb_per_minute_games": 10,
+      "recent_points_per_game": 26,
+      "recent_rebounds_per_game": 4,
+      "recent_games": 6,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_lopez",
+      "season": "2026-27",
+      "pts_per_100": 16,
+      "pts_per_100_games": 10,
+      "reb_per_minute": 0.16,
+      "reb_per_minute_games": 10,
+      "recent_points_per_game": 12,
+      "recent_rebounds_per_game": 5,
+      "recent_games": 6,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_bam",
+      "season": "2026-27",
+      "pts_per_100": 22,
+      "pts_per_100_games": 8,
+      "reb_per_minute": 0.28,
+      "reb_per_minute_games": 8,
+      "recent_points_per_game": 18,
+      "recent_rebounds_per_game": 10,
+      "recent_games": 6,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_butler",
+      "season": "2026-27",
+      "pts_per_100": 24,
+      "pts_per_100_games": 8,
+      "reb_per_minute": 0.16,
+      "reb_per_minute_games": 8,
+      "recent_points_per_game": 20,
+      "recent_rebounds_per_game": 6,
+      "recent_games": 5,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    }
+  ],
+  "projections": [
+    {
+      "game_id": "game_20261101_dal_bos",
+      "source": "sportsline",
+      "season": "2026-27",
+      "points": 31.2,
+      "rebounds": 8.2,
+      "minutes": 32,
+      "source_timestamp": "2026-11-01T15:00:00Z",
+      "source_player_id": "sl-luka"
+    },
+    {
+      "player_id": "player_luka",
+      "game_id": "game_20261101_dal_bos",
+      "source": "other",
+      "season": "2026-27",
+      "points": 32.2,
+      "rebounds": 8.5,
+      "minutes": 33,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_luka",
+      "game_id": "game_20261101_dal_bos",
+      "source": "numberfire",
+      "season": "2026-27",
+      "points": 32.4,
+      "rebounds": 8.1,
+      "minutes": 33.5,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_kyrie",
+      "game_id": "game_20261101_dal_bos",
+      "source": "sportsline",
+      "season": "2026-27",
+      "points": 26,
+      "rebounds": 4.2,
+      "minutes": 31,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_kyrie",
+      "game_id": "game_20261101_dal_bos",
+      "source": "other",
+      "season": "2026-27",
+      "points": 25.4,
+      "rebounds": 4,
+      "minutes": 30,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_gafford",
+      "game_id": "game_20261101_dal_bos",
+      "source": "sportsline",
+      "season": "2026-27",
+      "points": 10,
+      "rebounds": 8,
+      "minutes": 24,
+      "source_timestamp": "2026-10-30T15:00:00Z"
+    },
+    {
+      "player_id": "player_gafford",
+      "game_id": "game_20261101_dal_bos",
+      "source": "other",
+      "season": "2026-27",
+      "points": 11,
+      "rebounds": 8.5,
+      "minutes": 25,
+      "source_timestamp": "2026-10-30T15:00:00Z"
+    },
+    {
+      "player_id": "player_gafford",
+      "game_id": "game_20261101_dal_bos",
+      "source": "numberfire",
+      "season": "2026-27",
+      "points": 9.5,
+      "rebounds": 7.5,
+      "minutes": 23,
+      "source_timestamp": "2026-10-30T15:00:00Z"
+    },
+    {
+      "player_id": "player_tatum",
+      "game_id": "game_20261101_dal_bos",
+      "source": "sportsline",
+      "season": "2026-27",
+      "points": null,
+      "rebounds": 8,
+      "minutes": 35,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_tatum",
+      "game_id": "game_20261101_dal_bos",
+      "source": "other",
+      "season": "2026-27",
+      "points": null,
+      "rebounds": 7.8,
+      "minutes": 34,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_brown",
+      "game_id": "game_20261101_dal_bos",
+      "source": "sportsline",
+      "season": "2026-27",
+      "points": 24,
+      "rebounds": 5.5,
+      "minutes": 34,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_brown",
+      "game_id": "game_20261101_dal_bos",
+      "source": "other",
+      "season": "2026-27",
+      "points": 23.5,
+      "rebounds": 5.2,
+      "minutes": 33,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_brown",
+      "game_id": "game_20261101_dal_bos",
+      "source": "numberfire",
+      "season": "2026-27",
+      "points": 24.2,
+      "rebounds": 5.8,
+      "minutes": 34,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_white",
+      "game_id": "game_20261101_dal_bos",
+      "source": "sportsline",
+      "season": "2026-27",
+      "points": 16,
+      "rebounds": 4,
+      "minutes": 30,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_white",
+      "game_id": "game_20261101_dal_bos",
+      "source": "other",
+      "season": "2026-27",
+      "points": 15.5,
+      "rebounds": 3.8,
+      "minutes": 29,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_white",
+      "game_id": "game_20261101_dal_bos",
+      "source": "numberfire",
+      "season": "2026-27",
+      "points": 16.2,
+      "rebounds": 4.1,
+      "minutes": 31,
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_giannis",
+      "game_id": "game_20261031_mil_mia",
+      "source": "sportsline",
+      "season": "2026-27",
+      "points": 31,
+      "rebounds": 11.5,
+      "minutes": 34,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_giannis",
+      "game_id": "game_20261031_mil_mia",
+      "source": "other",
+      "season": "2026-27",
+      "points": 32,
+      "rebounds": 12,
+      "minutes": 35,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_giannis",
+      "game_id": "game_20261031_mil_mia",
+      "source": "numberfire",
+      "season": "2026-27",
+      "points": 30,
+      "rebounds": 11,
+      "minutes": 33,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_dame",
+      "game_id": "game_20261031_mil_mia",
+      "source": "sportsline",
+      "season": "2026-27",
+      "points": 27,
+      "rebounds": 4.2,
+      "minutes": 32,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_dame",
+      "game_id": "game_20261031_mil_mia",
+      "source": "other",
+      "season": "2026-27",
+      "points": 26,
+      "rebounds": 4,
+      "minutes": 31,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_lopez",
+      "game_id": "game_20261031_mil_mia",
+      "source": "sportsline",
+      "season": "2026-27",
+      "points": 12,
+      "rebounds": 5,
+      "minutes": 24,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_lopez",
+      "game_id": "game_20261031_mil_mia",
+      "source": "other",
+      "season": "2026-27",
+      "points": 11,
+      "rebounds": 4.8,
+      "minutes": 23,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_lopez",
+      "game_id": "game_20261031_mil_mia",
+      "source": "numberfire",
+      "season": "2026-27",
+      "points": 13,
+      "rebounds": 5.2,
+      "minutes": 25,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_bam",
+      "game_id": "game_20261031_mil_mia",
+      "source": "sportsline",
+      "season": "2026-27",
+      "points": 18,
+      "rebounds": 10,
+      "minutes": 32,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_bam",
+      "game_id": "game_20261031_mil_mia",
+      "source": "other",
+      "season": "2026-27",
+      "points": 17.5,
+      "rebounds": 9.5,
+      "minutes": 31,
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    }
+  ],
+  "lines": [
+    {
+      "player_id": "player_luka",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "points",
+      "line": 29.5,
+      "over_odds": -115,
+      "under_odds": -105,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_luka",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "rebounds",
+      "line": 8.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_luka",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "points_rebounds",
+      "line": 38.5,
+      "over_odds": -120,
+      "under_odds": 100,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_kyrie",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "points",
+      "line": 25.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_kyrie",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "rebounds",
+      "line": 4.5,
+      "over_odds": -115,
+      "under_odds": -105,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_kyrie",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "points_rebounds",
+      "line": 30.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_gafford",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "points",
+      "line": 10.5,
+      "over_odds": -105,
+      "under_odds": -115,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_gafford",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "rebounds",
+      "line": 8.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_gafford",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "points_rebounds",
+      "line": 19.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_tatum",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "points",
+      "line": 28.5,
+      "over_odds": -115,
+      "under_odds": -105,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_tatum",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "rebounds",
+      "line": 8.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_tatum",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "points_rebounds",
+      "line": 36.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_brown",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "points",
+      "line": 23.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_brown",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "rebounds",
+      "line": 5.5,
+      "over_odds": -115,
+      "under_odds": -105,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_brown",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "points_rebounds",
+      "line": 29.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_white",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "points",
+      "line": 15.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_white",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "rebounds",
+      "line": 4.5,
+      "over_odds": -105,
+      "under_odds": -115,
+      "source": "samplebook",
+      "source_timestamp": null
+    },
+    {
+      "player_id": "player_white",
+      "game_id": "game_20261101_dal_bos",
+      "season": "2026-27",
+      "stat": "points_rebounds",
+      "line": 20.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-11-01T15:00:00Z"
+    },
+    {
+      "player_id": "player_giannis",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "stat": "points",
+      "line": 28.5,
+      "over_odds": -115,
+      "under_odds": -105,
+      "source": "samplebook",
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_giannis",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "stat": "rebounds",
+      "line": 11.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_giannis",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "stat": "points_rebounds",
+      "line": 40.5,
+      "over_odds": -120,
+      "under_odds": 100,
+      "source": "samplebook",
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_dame",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "stat": "points",
+      "line": 25.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_dame",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "stat": "rebounds",
+      "line": 4.5,
+      "over_odds": -115,
+      "under_odds": -105,
+      "source": "samplebook",
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_dame",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "stat": "points_rebounds",
+      "line": 30.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_lopez",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "stat": "points",
+      "line": 18.5,
+      "over_odds": -105,
+      "under_odds": -115,
+      "source": "samplebook",
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_lopez",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "stat": "rebounds",
+      "line": 5.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_lopez",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "stat": "points_rebounds",
+      "line": 23.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_bam",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "stat": "points",
+      "line": 17.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_bam",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "stat": "rebounds",
+      "line": 9.5,
+      "over_odds": -115,
+      "under_odds": -105,
+      "source": "samplebook",
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_bam",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "stat": "points_rebounds",
+      "line": 27.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_butler",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "stat": "points",
+      "line": 19.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_butler",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "stat": "rebounds",
+      "line": 5.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    },
+    {
+      "player_id": "player_butler",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "stat": "points_rebounds",
+      "line": 25.5,
+      "over_odds": -110,
+      "under_odds": -110,
+      "source": "samplebook",
+      "source_timestamp": "2026-10-31T16:00:00Z"
+    }
+  ],
+  "actuals": [
+    {
+      "player_id": "player_giannis",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "dnp": false,
+      "points": 34,
+      "rebounds": 12,
+      "source_timestamp": "2026-10-31T23:30:00Z"
+    },
+    {
+      "player_id": "player_dame",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "dnp": false,
+      "points": 25.5,
+      "rebounds": 4,
+      "source_timestamp": "2026-10-31T23:30:00Z"
+    },
+    {
+      "player_id": "player_lopez",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "dnp": false,
+      "points": 20,
+      "rebounds": 6,
+      "source_timestamp": "2026-10-31T23:30:00Z"
+    },
+    {
+      "player_id": "player_bam",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "dnp": true,
+      "source_timestamp": "2026-10-31T23:30:00Z"
+    },
+    {
+      "player_id": "player_butler",
+      "game_id": "game_20261031_mil_mia",
+      "season": "2026-27",
+      "dnp": false,
+      "points": 22,
+      "rebounds": 6,
+      "source_timestamp": "2026-10-31T23:30:00Z"
+    }
+  ]
+}
