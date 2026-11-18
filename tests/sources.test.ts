@@ -280,6 +280,93 @@ test("a later refresh grades box scores for games already on the desk", () => {
   assert.match(dayTwo.messages.map((item) => item.message).join(" "), /graded 1 result on 1 earlier date/);
 });
 
+function nightLeaders(points: number): FetchedPage {
+  return page(`<table><tr>
+    <td data-stat="player" data-append-csv="doncilu01">Luka Doncic</td>
+    <td data-stat="team_id">LAL</td>
+    <td data-stat="game_location"></td>
+    <td data-stat="opp_id">TOR</td>
+    <td data-stat="pts">${points}</td>
+    <td data-stat="trb">11</td>
+  </tr></table>`);
+}
+
+function savedPoints(gameId: string) {
+  return {
+    playerId: "doncilu01",
+    gameId,
+    stat: "points" as const,
+    slateDate: "2026-11-01",
+    baseline: 31,
+    projection: 31,
+    minutes: 36,
+    adjustments: [],
+    flags: [],
+    line: 28.5,
+    overOdds: -110,
+    underOdds: -110,
+    savedAt: "2026-11-01T23:45:00.000Z",
+    sourcesUsed: ["sportsline"],
+    units: 2,
+    unitDollars: 10,
+  };
+}
+
+test("last-night leaders attach when home and away are swapped", () => {
+  const dayOne = applyPublicPages(emptyDatabase(), "2026-11-01", bundle({
+    actuals: page("<table></table>"),
+    last15: [],
+  }));
+  const swappedId = "2026-11-01|LAL@TOR";
+  dayOne.db.games = dayOne.db.games.map((game) => game.gameId === "2026-11-01|TOR@LAL"
+    ? { ...game, gameId: swappedId, homeTeamId: "TOR", awayTeamId: "LAL" }
+    : game);
+  dayOne.db.projections = dayOne.db.projections.map((row) => row.gameId === "2026-11-01|TOR@LAL" ? { ...row, gameId: swappedId } : row);
+  dayOne.db.pregame = [savedPoints(swappedId)];
+  const dayTwo = applyPublicPages(dayOne.db, "2026-11-02", bundle({
+    last15: [{ date: "2026-11-01", page: nightLeaders(28) }],
+    actuals: page("<table></table>"),
+  }));
+  assert.equal(dayTwo.db.games.some((game) => game.gameId === "2026-11-01|TOR@LAL"), false);
+  assert.equal(dayTwo.db.games.find((game) => game.gameId === swappedId)?.status, "final");
+  assert.equal(dayTwo.db.games.find((game) => game.gameId === swappedId)?.homeTeamId, "TOR");
+  assert.equal(dayTwo.db.actuals.length, 1);
+  assert.equal(dayTwo.db.actuals[0]?.gameId, swappedId);
+  assert.equal(dayTwo.db.actuals[0]?.points, 28);
+  assert.deepEqual(dayTwo.db.pregame, [savedPoints(swappedId)]);
+});
+
+test("last-night leaders create a missing game and keep saved units", () => {
+  const dayOne = applyPublicPages(emptyDatabase(), "2026-11-01", bundle({
+    actuals: page("<table></table>"),
+    last15: [],
+  }));
+  const missingId = "2026-11-01|TOR@LAL";
+  dayOne.db.games = dayOne.db.games.filter((game) => game.gameId !== missingId);
+  dayOne.db.pregame = [savedPoints(missingId)];
+  const dayTwo = applyPublicPages(dayOne.db, "2026-11-02", bundle({
+    last15: [{ date: "2026-11-01", page: nightLeaders(30) }],
+    actuals: page("<table></table>"),
+  }));
+  assert.equal(dayTwo.db.games.find((game) => game.gameId === missingId)?.status, "final");
+  assert.equal(dayTwo.db.actuals[0]?.gameId, missingId);
+  assert.equal(dayTwo.db.actuals[0]?.points, 30);
+  assert.deepEqual(dayTwo.db.pregame, [savedPoints(missingId)]);
+});
+
+test("older leader pages still skip a game that is not on the desk", () => {
+  const dayOne = applyPublicPages(emptyDatabase(), "2026-11-01", bundle({
+    actuals: page("<table></table>"),
+    last15: [],
+  }));
+  const dayTwo = applyPublicPages(dayOne.db, "2026-11-02", bundle({
+    last15: [{ date: "2026-10-30", page: nightLeaders(22) }],
+    actuals: page("<table></table>"),
+  }));
+  assert.equal(dayTwo.db.games.some((game) => game.gameId === "2026-10-30|TOR@LAL"), false);
+  assert.equal(dayTwo.db.actuals.some((row) => row.gameId.startsWith("2026-10-30|")), false);
+});
+
 test("sportsline names match only one normalized player on the same team", () => {
   const accentRoster = roster([{ id: "doncilu01", name: "Luka Doncic", team: "LAL" }]);
   const accent = applyPublicPages(emptyDatabase(), "2026-11-02", bundle({

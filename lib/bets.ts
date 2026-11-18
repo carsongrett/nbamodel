@@ -122,6 +122,8 @@ export type SettledBetRow = {
 };
 
 export type PendingBetRow = {
+  /** Slate day stored with the line, so a stuck prior-day bet still reads as that date. */
+  slateDate: string;
   playerName: string;
   /** Saved stat. Null when that save has none. */
   stat: Stat | null;
@@ -239,6 +241,7 @@ export function betLists(bets: readonly NamedBet[], today: string): { settled: S
       });
     } else if (bet.grade === "unresolved") {
       pending.push({
+        slateDate: bet.slateDate,
         playerName: bet.playerName,
         stat: bet.stat ?? null,
         side: pendingSide(bet.projection, bet.line),

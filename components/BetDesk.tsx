@@ -267,6 +267,7 @@ export default function BetDesk({ authConfigured }: { authConfigured: boolean })
             <table>
               <thead>
                 <tr>
+                  <th>Date</th>
                   <th>Player</th>
                   <th>Stat</th>
                   <th>Over/Under</th>
@@ -277,7 +278,8 @@ export default function BetDesk({ authConfigured }: { authConfigured: boolean })
               </thead>
               <tbody>
                 {totals.pending.map((bet, index) => (
-                  <tr key={`${bet.playerName}|${bet.stat ?? ""}|${bet.units}|${index}`}>
+                  <tr key={`${bet.slateDate}|${bet.playerName}|${bet.stat ?? ""}|${bet.units}|${index}`}>
+                    <td>{formatSlateDay(bet.slateDate)}</td>
                     <td>{bet.playerName}</td>
                     <td>{pendingStat(bet.stat)}</td>
                     <td>{pendingSide(bet.side)}</td>
