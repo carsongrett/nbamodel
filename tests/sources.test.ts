@@ -860,6 +860,20 @@ test("espn odds page supplies the home spread and the total", () => {
   assert.equal(parsed.parsed, true);
   assert.equal(parsed.games.length, 1);
   assert.deepEqual(parsed.games[0], { away: "OKC", home: "CLE", spread: -4.5, total: 229.5, tip: "2026-11-03T00:00Z" });
+  const liveClock = `<div data-testid="betSixPackTable"><div data-testid="betSixPackTable-item-0-0">
+    <a href="/nba/game/_/gameId/401910031/magic-wizards" data-game-link="true"><span style="visibility:hidden">12:00 AM</span></a>
+    <a href="/nba/team/_/name/orl/orlando-magic"></a>
+    <a aria-label="pointSpread -112"><div data-testid="OddsCell"><div>-4.5</div></div></a>
+    <a aria-label="total -115"><div data-testid="OddsCell"><div>o219.5</div></div></a>
+    <a href="/nba/team/_/name/wsh/washington-wizards"></a>
+    <a aria-label="pointSpread -108"><div data-testid="OddsCell"><div>+4.5</div></div></a>
+    <a aria-label="total -110"><div data-testid="OddsCell"><div>u219.5</div></div></a>
+  </div></div>
+  {"gameCastLink":"/nba/game/_/gameId/401910031/magic-wizards","labels":{"line":"2026-11-23T00:00Z"}}`;
+  const hidden = parseEspnOdds(liveClock, "2026-11-22");
+  assert.equal(hidden.parsed, true);
+  assert.equal(hidden.games.length, 1);
+  assert.deepEqual(hidden.games[0], { away: "ORL", home: "WAS", spread: 4.5, total: 219.5, tip: "2026-11-23T00:00Z" });
   const stored = applyEspnOdds(emptyDatabase(), "2026-11-02", parsed.games, retrievedAt);
   assert.equal(stored.db.games.find((row) => row.homeTeamId === "CLE")?.tipAt, "2026-11-03T00:00Z");
   const kept = applyBettingProsProbe(stored.db, "2026-11-02", {
