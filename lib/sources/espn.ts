@@ -54,14 +54,32 @@ function labeled(card: string, label: string): string[] {
   return [...card.matchAll(pattern)].map((match) => match[1].trim());
 }
 
+/** ESPN used to print the ISO tip in the game link. It now hides a clock and keeps the ISO in labels.line. */
+function tipsByEspnGameId(html: string): Map<string, string> {
+  const tips = new Map<string, string>();
+  const pattern = /\/nba\/game\/_\/gameId\/(\d+)\/[a-z0-9-]+[\s\S]{0,2000}?"labels"\s*:\s*\{\s*"line"\s*:\s*"(\d{4}-\d{2}-\d{2}T[^"]+)"/g;
+  for (const match of html.matchAll(pattern)) {
+    if (chicagoDateOf(match[2])) tips.set(match[1], match[2]);
+  }
+  return tips;
+}
+
+function cardTip(card: string, tips: Map<string, string>): string | null {
+  const linked = card.match(/data-game-link="true">(\d{4}-\d{2}-\d{2}T[^<]+)/)?.[1];
+  if (linked && chicagoDateOf(linked)) return linked;
+  const gameId = card.match(/\/nba\/game\/_\/gameId\/(\d+)/)?.[1];
+  return gameId ? tips.get(gameId) ?? null : null;
+}
+
 export function parseEspnOdds(html: string, slateDate: string): { games: EspnGameOdds[]; parsed: boolean } {
   if (!html.includes('data-testid="betSixPackTable"')) return { games: [], parsed: false };
   const cards = html.split('data-testid="betSixPackTable-item-').slice(1);
   if (cards.length === 0) return { games: [], parsed: false };
   const games: EspnGameOdds[] = [];
+  const tips = tipsByEspnGameId(html);
   let dated = 0;
   for (const card of cards) {
-    const tip = card.match(/data-game-link="true">(\d{4}-\d{2}-\d{2}T[^<]+)/)?.[1];
+    const tip = cardTip(card, tips);
     if (!tip || chicagoDateOf(tip) !== slateDate) continue;
     dated++;
     const slugs = [...card.matchAll(/\/nba\/team\/_\/name\/([a-z0-9]+)\//g)].map((match) => match[1]);
